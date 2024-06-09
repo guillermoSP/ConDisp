@@ -1,0 +1,2655 @@
+<pre class="metadata">
+Title: WebUSB API
+Status: w3c/CG-DRAFT
+ED: https://wicg.github.io/webusb
+Shortname: webusb
+Level: 1
+Editor: Reilly Grant 83788, Google LLC https://www.google.com, reillyg@google.com
+Editor: Ken Rockot 87080, Google LLC https://www.google.com, rockot@google.com
+Editor: Ovidio Ruiz-Henríquez 106543, Google LLC https://www.google.com, odejesush@google.com
+Abstract: This document describes an API for securely providing access to Universal Serial Bus devices from web pages.
+Group: wicg
+Repository: https://github.com/WICG/webusb/
+!Participate: <a href="https://www.w3.org/community/wicg/">Join the W3C Community Group</a>
+!Participate: <a href="irc://irc.w3.org:6665/#webusb">IRC: #webusb on W3C's IRC</a> (Stay around for an answer, it make take a while)
+!Participate: <a href="http://stackoverflow.com/questions/tagged/webusb">Ask questions on StackOverflow</a>
+</pre>
+
+<style>
+table {
+  border-collapse: collapse;
+  border-left-style: hidden;
+  border-right-style: hidden;
+  text-align: left;
+}
+table caption {
+  font-weight: bold;
+  padding: 3px;
+  text-align: left;
+}
+table td, table th {
+  border: 1px solid black;
+  padding: 3px;
+}
+
+/* Put nice boxes around each algorithm. */
+[data-algorithm]:not(.heading) {
+  padding: .5em;
+  border: thin solid #ddd; border-radius: .5em;
+  margin: .5em calc(-0.5em - 1px);
+}
+[data-algorithm]:not(.heading) > :first-child {
+  margin-top: 0;
+}
+[data-algorithm]:not(.heading) > :last-child {
+  margin-bottom: 0;
+}
+[data-algorithm] [data-algorithm] {
+    margin: 1em 0;
+}
+</style>
+
+# Introduction # {#introduction}
+
+<em>This section is non-normative</em>.
+
+The Universal Serial Bus (USB) is the de-facto standard for wired peripherals.
+Most USB devices implement one of roughly a dozen standard "device classes"
+which specify a way for the device to advertise the features it supports and
+commands and data formats for using those features. Standard device classes
+include keyboard, mice, audio, video and storage devices. Operating systems
+support such devices using the "class driver" provided by the OS vendor. There
+is however a long tail of devices that do not fit into one of the standardized
+device classes.  These devices require hardware vendors to write native drivers
+and SDKs in order for developers to take advantage of them and this native code
+prevents these devices from being used by the web.
+
+The WebUSB API provides a way to safely expose USB device services to the web.
+It provides an API familiar to developers who have used existing native USB
+libraries and exposes the device interfaces defined by existing specifications.
+With this API hardware manufacturers will have the ability to build
+cross-platform JavaScript SDKs for their devices. This will be good for the web
+because, instead of waiting for a new kind of device to be popular enough for
+browsers to provide a specific API, new and innovative hardware can be built
+for the web from day one.
+
+For more information about USB see [[#appendix-intro]].
+
+# Motivating Applications # {#motivating-applications}
+
+<em>This section is non-normative</em>.
+
+## Educational Devices ## {#app-edu-devices}
+
+The software delivery model of the web is a key enabler for educational
+applications because they can be quickly loaded on any computer without
+questions of platform compatibility or administrative credentials. Science
+classes are incorporating computerized measurement and data logging into their
+lessons. These tools require bundled software that may be difficult to install
+on managed computers as every new native application adds overhead to an already
+stressed IT department. Web-based hardware APIs allow support for these devices
+to be built directly into existing online course materials, providing a
+completely seamless experience.
+
+Students learning to code with one of the many microcontroller development kits
+can take advantage of online developer tools to write and upload their code.
+These tools already exist however they require a native component to interface
+between the browser and the hardware. These native extensions add a barrier to
+entry and may expose the user to security vulnerabilities in a way that that
+code running in the sandboxed web environment does not.
+
+## Web Drivers ## {#app-drivers}
+
+The composablity of the web allows a new ecosystem of hardware support to be
+built entirely from web technology. Taking 3D printers an example, imagine that
+a site hosting 3D object designs wants to integrate printing directly into their
+page. The web supports 2D printing but there is no API for the 3D variety. If
+manufacturers host embeddable pages that use the WebUSB API to send data to
+their printers, sites can use these pages to integrate support for the hardware
+in the same way that features such as embedded maps are added to many existing
+sites.
+
+## Devices Updates and Diagnostics ## {#app-updates-and-diagnostics}
+
+While wireless protocols such as Bluetooth are often the more convenient choice
+for consumer devices USB ports continue to proliferate because they are an easy
+solution for power delivery and can serve as the connection of last resort when
+the device isn't working. By integrating update and diagnostic tools into their
+support site a hardware manufacturer can provide tools for customers on any
+platform and collect better diagnostic data when a customer reaches out for
+support through their website. The <a>landing page</a> provides a way for the
+device manufacturer to direct the user to the right part of their website for
+help with their device.
+
+# Security and Privacy Considerations # {#security-and-privacy}
+
+<em>This section is non-normative</em>.
+
+The WebUSB API is a powerful feature and has the possibility to expose users to
+a number of new privacy and security risks. These risks can be broadly divided
+into three categories that will be described in the sections below.
+
+## Abusing Access to a Device ## {#abusing-a-device}
+
+Peripheral devices can serve a number of purposes. They may store data, as a
+flash drive does. They may collect information about the outside world as a
+camera or microphone does. They may manipulate objects in the outside world as
+a printer does. Each of the examples above have high-level APIs in the web
+platform with security features that aim to prevent their abuse by a malicious
+website. Storing data to or from an external drive requires the user to select
+the file manually. Turning on the microphone or camera requires permission from
+the user and may activate an indicator to let the user know data collection is
+in progress. Printing a document requires explicit action as well. This API
+provides a generic mechanism to connect to devices not covered by these
+existing high-level APIs and so it requires a similarly generic mechanism for
+preventing a malicious page from abusing a device.
+
+The first of these protections is the {{USB/requestDevice()}} function. The UA
+may display a permission prompt when this function is called. Even for a
+non-malicious page this action also preserves user privacy by preventing a site
+from connecting to a device before the user is aware that such a connection is
+possible. The UA may also display an indicator when a device connection is
+active.
+
+Secondly, this specification requires that only secure contexts as described
+in [[powerful-features]] can access USB devices. This ensures both the
+authenticity of the code executing on behalf of the origin and that data read
+from the device may not be intercepted in transit.
+
+Lastly, since USB devices are unable to distinguish requests from multiple
+sources, operating systems only allow a USB interface to have a single owning
+user-space or kernel-space driver. The UA acts as a user-space driver, therefore
+allowing only a single execution context to claim a USB interface at a time. The
+{{USBDevice/claimInterface()}} function will fail if multiple execution contexts
+attempt to claim an interface.
+
+## Attacking a Device ## {#attacking-a-device}
+
+Historically, unless they were created for high security applications, USB
+devices have been designed to trust the host they are connected to and so the
+host is the traditional guardian of access to the capabilities a device
+provides. In the development of this specification two possibilities were
+considered. First, the UA could notify the device of the origin from which a
+request originated. This would be similar to the <code>Referrer</code> header
+included in HTTP request. The difficulty of this approach is that it places
+the burden of access control on the device. Devices often have very limited
+processing and storage capabilities and so an effort was made to limit the
+amount of work necessary on the part of the device.
+
+The approach initially chosen during drafting of this specification was to
+instead require that the UA control access though a mechanism similiar to
+[[CORS]]. The device could provide the UA with a set of static data structures
+defining a set of origins that are allowed to connect to it. To support a
+transition period for existing devices it was proposed that information about
+allowed origins could also be provided out of band through some kind of public
+registry.
+
+A downside of this approach was two-fold. First, it required vendors to build
+new devices with WebUSB in mind or rely on a public registry system that proved
+difficult to specify. Product development cycles are long and as only an
+Editor's Draft this specification does not have the clout necessary to influence
+product planning. Second, it provided no mechanism for third-party developers to
+use this API with a device. This limited innovation and the number of developers
+who could take advantage of this new capability.
+
+After considering these options the authors have decided that the permission
+prompt encouraged by the {{USB/requestDevice()}} method and the integration with
+[[#permissions-policy]] provide adequate protection against unwanted access to a
+device.
+
+## Attacking the Host ## {#attacking-the-host}
+
+If a device is compromised then in addition to abusing its own capabilities
+the attacker may also use it to in turn attack the host to which it is connected
+or if the exploit is persistent any host it is connected to later. The methods
+above are the ways in which this specification attempts to mitigate this attack
+vector for once the device is under the control of an attacker (for example, by
+uploading a malicious firmware image) there is nothing that can be done by the
+UA to prevent further damage.
+
+This specification recommends device manufacturers practice defense in depth by
+designing their devices to only accept signed firmware updates and/or require
+physical access to the device in order to apply some configuration changes.
+
+# WebUSB Descriptors and Requests # {#webusb-descriptors-and-requests}
+
+This specification defines descriptors and commands the UA MAY use to gather
+information about the device specific to implementing this API.
+
+<h3 dfn>WebUSB Platform Capability Descriptor</h3>
+
+A device announces support for the WebUSB command set by including the
+following <a>Platform Descriptor</a> in its <a>Binary Object
+Store</a>:
+
+<table>
+  <tr>
+    <th>Offset</th>
+    <th>Field</th>
+    <th>Size</th>
+    <th>Value</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>0</td>
+    <td>bLength</td>
+    <td>1</td>
+    <td>Number</td>
+    <td>Size of this descriptor. Must be set to 24.</td>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td>bDescriptorType</td>
+    <td>1</td>
+    <td>Constant</td>
+    <td>DEVICE CAPABILITY descriptor type ([[!USB31]] Table 9-6).</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>bDevCapabilityType</td>
+    <td>1</td>
+    <td>Constant</td>
+    <td>PLATFORM capability type ([[!USB31]] Table 9-14).</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>bReserved</td>
+    <td>1</td>
+    <td>Number</td>
+    <td>This field is reserved and shall be set to zero.</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td>PlatformCapabilityUUID</td>
+    <td>16</td>
+    <td>UUID</td>
+    <td>Must be set to {3408b638-09a9-47a0-8bfd-a0768815b665}.</td>
+  </tr>
+  <tr>
+    <td>20</td>
+    <td>bcdVersion</td>
+    <td>2</td>
+    <td>BCD</td>
+    <td>Protocol version supported. Must be set to 0x0100.</td>
+  </tr>
+  <tr>
+    <td>22</td>
+    <td>bVendorCode</td>
+    <td>1</td>
+    <td>Number</td>
+    <td>bRequest value used for issuing WebUSB requests.</td>
+  </tr>
+  <tr>
+    <td>23</td>
+    <td>iLandingPage</td>
+    <td>1</td>
+    <td>Number</td>
+    <td>URL descriptor index of the device's <a>landing page</a>.</td>
+  </tr>
+</table>
+
+The <code>iLandingPage</code> field, when non-zero, indicates a
+<dfn>landing page</dfn> which the device manufacturer would like the user to
+visit in order to control their device. The UA MAY suggest the user navigate
+to this URL when the device is connected.
+
+Note: The USB is a little-endian bus and so according to [[RFC4122]] the UUID
+above MUST be sent over the wire as the byte sequence <code>{0x38, 0xB6, 0x08,
+0x34, 0xA9, 0x09, 0xA0, 0x47, 0x8B, 0xFD, 0xA0, 0x76, 0x88, 0x15, 0xB6,
+0x65}</code>.
+
+## WebUSB Device Requests ## {#device-requests}
+
+All <a>control transfers</a> defined by this specification are considered to
+be vendor-specific requests. The <code>bVendorCode</code> value found
+in the <a>WebUSB Platform Capability Descriptor</a> provides the UA
+with the <code>bRequest</code> the device expects the host to use when
+issuing <a>control transfers</a> these requests. The request type is then
+specified in the <code>wIndex</code> field.
+
+<table>
+  <caption>WebUSB Request Codes</caption>
+  <tr>
+    <th>Constant</th>
+    <th>Value</th>
+  </tr>
+  <tr>
+    <td>(Reserved)</td>
+    <td>1</td>
+  </tr>
+  <tr>
+    <td>GET_URL</td>
+    <td>2</td>
+  </tr>
+</table>
+
+<h4 dfn>Get URL</h4>
+
+This request fetches the URL descriptor with the given index.
+
+The device MUST respond with the <a>URL Descriptor</a> at the given
+index or stall the transfer if the index is invalid.
+
+<table>
+  <tr>
+    <th>bmRequestType</td>
+    <th>bRequest</th>
+    <th>wValue</th>
+    <th>wIndex</th>
+    <th>wLength</th>
+    <th>Data</th>
+  </tr>
+  <tr>
+    <td>11000000B</td>
+    <td><code>bVendorCode</code></td>
+    <td>Descriptor Index</td>
+    <td>GET_URL</td>
+    <td>Descriptor Length</td>
+    <td>Descriptor</td>
+  </tr>
+</table>
+
+## WebUSB Descriptors ## {#webusb-descriptors}
+
+These descriptor types are returned by requests defined in this
+specification.
+
+<table>
+  <caption>WebUSB Descriptor Types</caption>
+  <tr>
+    <th>Constant</th>
+    <th>Value</th>
+  </tr>
+  <tr>
+    <td>(Reserved)</td>
+    <td>0-2</td>
+  </tr>
+  <tr>
+    <td>WEBUSB_URL</td>
+    <td>3</td>
+  </tr>
+</table>
+
+<h4 dfn>URL Descriptor</h4>
+
+This descriptor contains a single URL and is returned by the <a>Get URL</a>
+request.
+
+<table>
+  <tr>
+    <th>Offset</th>
+    <th>Field</th>
+    <th>Size</th>
+    <th>Value</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>0</td>
+    <td>bLength</td>
+    <td>1</td>
+    <td>Number</td>
+    <td>Size of this descriptor.</td>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td>bDescriptorType</td>
+    <td>1</td>
+    <td>Constant</td>
+    <td>WEBUSB_URL.</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>bScheme</td>
+    <td>1</td>
+    <td>Number</td>
+    <td>URL scheme prefix.</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>URL</td>
+    <td>Variable</td>
+    <td>String</td>
+    <td>UTF-8 encoded URL (excluding the scheme prefix).</td>
+  </tr>
+</table>
+
+The <code>bScheme</code> field MUST be one of these values:
+
+<table>
+  <caption>URL Prefixes</caption>
+  <tr>
+    <th>Value</th>
+    <th>Prefix</th>
+  </tr>
+  <tr>
+    <td>0</td>
+    <td>"http://"</td>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td>"https://"</td>
+  </tr>
+  <tr>
+    <td>255</td>
+    <td>""</td>
+  </tr>
+</table>
+
+The special value <code>255</code> indicates that the entire URL, including
+scheme, is encoded in the <code>URL</code> field.
+
+# Device Enumeration # {#enumeration}
+
+<xmp class="idl">
+  dictionary USBDeviceFilter {
+    unsigned short vendorId;
+    unsigned short productId;
+    octet classCode;
+    octet subclassCode;
+    octet protocolCode;
+    DOMString serialNumber;
+  };
+
+  dictionary USBDeviceRequestOptions {
+    required sequence<USBDeviceFilter> filters;
+    sequence<USBDeviceFilter> exclusionFilters = [];
+  };
+
+  [Exposed=(Worker,Window), SecureContext]
+  interface USB : EventTarget {
+    attribute EventHandler onconnect;
+    attribute EventHandler ondisconnect;
+    Promise<sequence<USBDevice>> getDevices();
+    [Exposed=Window] Promise<USBDevice> requestDevice(USBDeviceRequestOptions options);
+  };
+
+  [Exposed=Window, SecureContext]
+  partial interface Navigator {
+    [SameObject] readonly attribute USB usb;
+  };
+
+  [Exposed=Worker, SecureContext]
+  partial interface WorkerNavigator {
+    [SameObject] readonly attribute USB usb;
+  };
+</xmp>
+
+<div class="example">
+In this example, we retrieve some devices to include in a UI. When the page is
+first loaded, it should check if it already has permission to access any
+connected devices by calling {{USB/getDevices()}},
+
+<pre highlight="js">
+  document.addEventListener('DOMContentLoaded', async () => {
+    let devices = await navigator.usb.getDevices();
+    devices.forEach(device => {
+      // Add |device| to the UI.
+    });
+  });
+</pre>
+
+After the page is loaded the user may <a>connect</a> or <a>disconnect</a> a
+device from their system so script should also register for these events in
+order to keep the interface up-to-date,
+
+<pre highlight="js">
+  navigator.usb.addEventListener('connect', event => {
+    // Add |event.device| to the UI.
+  });
+
+  navigator.usb.addEventListener('disconnect', event => {
+    // Remove |event.device| from the UI.
+  });
+</pre>
+
+If this is the first time the user has visited the page then it won't have
+permission to access any devices so the page must first call
+{{USB/requestDevice()}} while the [=relevant global object=] has a
+<a>transient activation</a>. In this case the page supports devices from vendor
+<code>0xABCD</code> that carry the vendor-specific subclass <code>0x01</code>,
+
+<pre highlight="js">
+  let button = document.getElementById('request-device');
+  button.addEventListener('click', async () => {
+    let device;
+    try {
+      device = await navigator.usb.requestDevice({ filters: [{
+          vendorId: 0xABCD,
+          classCode: 0xFF, // vendor-specific
+          protocolCode: 0x01
+      }]});
+    } catch (err) {
+      // No device was selected.
+    }
+
+    if (device !== undefined) {
+      // Add |device| to the UI.
+    }
+  });
+</pre>
+</div>
+
+A USB device |device| <dfn data-lt="match a device filter">matches a device
+filter</dfn> |filter| if the following steps return <code>match</code>:
+
+  1. Let |deviceDesc| be |device|'s <a>device descriptor</a>.
+  1. If <code>|filter|.{{USBDeviceFilter/vendorId}}</code> is present and
+     <code>|deviceDesc|.idVendor</code> does not equal
+     <code>|filter|.{{USBDeviceFilter/vendorId}}</code>, return
+     <code>mismatch</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/productId}}</code> is present and
+     <code>|deviceDesc|.idProduct</code> does not equal
+     <code>|filter|.{{USBDeviceFilter/productId}}</code>, return
+     <code>mismatch</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/serialNumber}}</code> is present then,
+     let |serialNumber| be the <a>string descriptor</a> with index
+     <code>|deviceDesc|.iSerialNumber</code>. If |device| returns an error when
+     requesting |serialNumber| or |serialNumber| is not equal to
+     <code>|filter|.{{USBDeviceFilter/serialNumber}}</code>, return
+     <code>mismatch</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/classCode}}</code> is present and,
+     for any of |device|'s interface's |interface|, |interface| <a>matches
+     the interface filter</a> |filter|, return <code>match</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/classCode}}</code> is present and
+     <code>|deviceDesc|.bDeviceClass</code> is not equal to
+     <code>|filter|.{{USBDeviceFilter/classCode}}</code>, return
+     <code>mismatch</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/subclassCode}}</code> is present and
+     <code>|deviceDesc|.bDeviceSubClass</code> is not equal to
+     <code>|filter|.{{USBDeviceFilter/subclassCode}}</code>, return
+     <code>mismatch</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/protocolCode}}</code> is present and
+     <code>|deviceDesc|.bDeviceProtocol</code> is not equal to
+     <code>|filter|.{{USBDeviceFilter/protocolCode}}</code>, return
+     <code>mismatch</code>.
+  1. Return <code>match</code>.
+
+Note: The steps above treat the <code>bDeviceClass</code>,
+<code>bDeviceSubClass</code> and <code>bDeviceProtocol</code> fields of the
+<a>device descriptor</a> as though they were part of an <a>interface
+descriptor</a> which is also compared against the provided filter.
+
+A USB interface |interface| <dfn data-lt="matches the interface filter">matches
+an interface filter</dfn> |filter| if the following steps return
+<code>match</code>:
+
+  1. Let |desc| be |interface|'s <a>interface descriptor</a>.
+  1. If <code>|filter|.{{USBDeviceFilter/classCode}}</code> is present and
+     <code>|desc|.bInterfaceClass</code> is not equal to
+     <code>|filter|.{{USBDeviceFilter/classCode}}</code>, return
+     <code>mismatch</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/subclassCode}}</code> is present and
+     <code>|desc|.bInterfaceSubClass</code> is not equal to
+     <code>|filter|.{{USBDeviceFilter/subclassCode}}</code>, return
+     <code>mismatch</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/protocolCode}}</code> is present and
+     <code>|desc|.bInterfaceProtocol</code> is not equal to
+     <code>|filter|.{{USBDeviceFilter/protocolCode}}</code>, return
+     <code>mismatch</code>.
+  1. Return <code>match</code>.
+
+A {{USBDeviceFilter}} |filter|
+<dfn data-lt="is not a valid filter">is valid</dfn> if the following steps
+return <code>valid</code>:
+
+  1. If <code>|filter|.{{USBDeviceFilter/productId}}</code> is present and
+     <code>|filter|.{{USBDeviceFilter/vendorId}}</code> is not present,
+     return <code>invalid</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/subclassCode}}</code> is present and
+     <code>|filter|.{{USBDeviceFilter/classCode}}</code> is not present,
+     return <code>invalid</code>.
+  1. If <code>|filter|.{{USBDeviceFilter/protocolCode}}</code> is present and
+     <code>|filter|.{{USBDeviceFilter/subclassCode}}</code> is not present,
+     return <code>invalid</code>.
+  1. Return <code>valid</code>.
+
+The UA MUST be able to <dfn>enumerate all devices attached to the system</dfn>.
+It is, however NOT required to perform this work each time an algorithm
+requests an enumeration. The UA MAY cache the result of the first enumeration
+it performs and then begin monitoring for device connection and disconnection
+events, adding connected devices to its cached enumeration and removing
+disconnected devices. This mode of operation is preferred as it reduces the
+number of operating system calls made and amount of bus traffic generated by
+the {{USB/getDevices()}} and {{USB/requestDevice()}} methods.
+
+The {{USB/onconnect}} attribute is an Event handler IDL attribute for the
+<a>connect</a> event type.
+
+The {{USB/ondisconnect}} attribute is an Event handler IDL attribute for the
+<a>disconnect</a> event type.
+
+The {{USB/getDevices()}} method, when invoked, MUST return a new {{Promise}} and
+run the following steps <a>in parallel</a>:
+
+  1. Let |document| be <a>this</a>'s [=relevant global object=]'s
+     [=associated Document=], or <code>null</code> if there is no associated
+     {{Document}}.
+  1. Let |storage| be:
+     1. The {{USBPermissionStorage}} object in the script execution environment
+        of the associated [=service worker client=], if [=this=]'s [=relevant
+        global object=] is a {{ServiceWorkerGlobalScope}}.
+     1. Otherwise, the {{USBPermissionStorage}} object in the current script
+        execution environment.
+  1. <a>Enumerate all devices attached to the system</a>. Let this result be
+     |enumerationResult|.
+  2. Let |devices| be a new empty {{Array}}.
+  3. For each |device| in |enumerationResult|:
+     1. If |device| is [=blocklisted=] for |document|, [=iteration/continue=].
+     1. If this is the first call to this method, <a>check permissions for
+        |device|</a> with |storage|.
+     2. Search for an element |allowedDevice| in
+        <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code> where
+        |device| is in |allowedDevice|@{{[[devices]]}}. If no such element
+        exists, continue to the next |device|.
+     3. Add the {{USBDevice}} object representing |device| to |devices|.
+  4. <a>Resolve</a> |promise| with |devices|.
+
+The {{USB/requestDevice()}} method, when invoked, MUST run the following steps:
+
+  1. <a>Request permission to use</a> the following descriptor,
+     <pre highlight="js">
+       {
+         name: "usb"
+         filters: <var>options</var>.<a idl for="USBDeviceRequestOptions">filters</a>
+         exclusionFilters: <var>options</var>.<a idl for="USBDeviceRequestOptions">exclusionFilters</a>
+       }
+     </pre>
+     Let |permissionResult| be the resulting {{Promise}}.
+  2. <a>Upon fulfillment</a> of |permissionResult| with |result| run the
+     following steps:
+       1. If <code>|result|.{{USBPermissionResult/devices}}</code> is empty,
+          throw a {{NotFoundError}} and abort these steps.
+       2. Return <code>|result|.{{USBPermissionResult/devices}}[0]</code>.
+
+To <dfn>request the "usb" permission</dfn>, given a {{Document}} |document|, a
+{{USBPermissionStorage}} |storage|, a {{USBPermissionDescriptor}} |options| and
+a {{USBPermissionResult}} |status|, the UA MUST return a new {{Promise}}
+|promise| and run the following steps <a>in parallel</a>:
+
+  1. For each |filter| in
+     <code>|options|.{{USBPermissionDescriptor/filters}}</code> if |filter|
+     <a>is not a valid filter</a> <a>reject</a> |promise| with a {{TypeError}}
+     and abort these steps.
+  2. For each |exclusionFilter| in
+    <code>|options|.{{USBPermissionDescriptor/exclusionFilters}}</code> if
+    |exclusionFilter| <a>is not a valid filter</a> <a>reject</a> |promise|
+    with a {{TypeError}} and abort these steps.
+  3. Check that the algorithm was triggered while the [=relevant global object=]
+     had a <a>transient activation</a>. Otherwise, <a>reject</a> |promise| with
+     a {{SecurityError}} and abort these steps.
+  4. Set <code>|status|.{{PermissionStatus/state}}</code> to <code>"ask"</code>.
+  5. <a>Enumerate all devices attached to the system</a>. Let this result be
+     |enumerationResult|.
+  1. Remove devices from |enumerationResult| if they are [=blocklisted=] for
+     |document|.
+  6. Remove devices from |enumerationResult| if they do not <a>match a device
+     filter</a> in <code>|options|.{{USBPermissionDescriptor/filters}}</code>.
+  7. Remove devices from |enumerationResult| if they <a>match a device filter</a>
+     in <code>|options|.{{USBPermissionDescriptor/exclusionFilters}}</code>.
+  8. Display a prompt to the user requesting they select a device from
+     |enumerationResult|. The UA SHOULD show a human-readable name for each
+     device.
+  9. Wait for the user to have selected a |device| or cancelled the
+     prompt.
+  10. If the user cancels the prompt, set
+     <code>|status|.{{USBPermissionResult/devices}}</code> to an empty
+     {{FrozenArray}}, <a>resolve</a> |promise| with <code>undefined</code>,
+     and abort these steps.
+  11. <a>Add |device| to |storage|</a>.
+  12. Let |deviceObj| be the {{USBDevice}} object representing |device|.
+  13. Set <code>|status|.{{USBPermissionResult/devices}}</code> to a new
+      {{FrozenArray}} containing |deviceObj| as its only element.
+  14. <a>Resolve</a> |promise| with <code>undefined</code>.
+
+To <dfn data-lt="add device to storage">add an allowed <a>USB device</a></dfn>
+|device| to {{USBPermissionStorage}} |storage|, the UA MUST run the following
+steps:
+
+  1. Search for an element |allowedDevice| in
+     <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code> where
+     |device| is in |allowedDevice|@{{[[devices]]}}. If one is found, abort
+     these steps.
+  2. Let |vendorId| and |productId| be |device|'s <a>vendor ID</a> and
+     <a>product ID</a>.
+  3. Let |serialNumber| be |device|'s <a>serial number</a> if it has one,
+     otherwise <code>undefined</code>.
+  6. Append <code>{ vendorId: |vendorId|, productId: |productId|, serialNumber: |serialNumber| }</code>,
+     with a {{[[devices]]}} internal slot containing a single entry |device| to
+     <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code>.
+
+To <dfn data-lt="check permissions for device">check permissions for a new
+<a>USB device</a></dfn> |device|, given a {{USBPermissionStorage}} |storage|,
+the UA MUST run the following steps:
+
+  1. Let |vendorId| and |productId| be |device|'s <a>vendor ID</a> and
+     <a>product ID</a>.
+  2. Let |serialNumber| be |device|'s if it has one, otherwise
+     <code>undefined</code>.
+  3. Search for an element |allowedDevice| in
+     <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code> where:
+       * <code>|allowedDevice|.{{AllowedUSBDevice/vendorId}}</code> equals
+         |vendorId|.
+       * <code>|allowedDevice|.{{AllowedUSBDevice/productId}}</code> equals
+         |productId|.
+       * <code>|allowedDevice|.{{AllowedUSBDevice/serialNumber}}</code> equals
+         |serialNumber|.
+  4. If no such element exists, return <code>null</code>.
+  5. Add |device| to |allowedDevice|@{{[[devices]]}}.
+  6. Return |allowedDevice|.
+
+To <dfn data-lt="remove device from storage">remove an allowed <a>USB
+device</a></dfn> |device|, given a {{USBPermissionStorage}} |storage|,
+the UA MUST run the following steps:
+
+  1. Search for an element |allowedDevice| in
+     <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code> where
+     |device| is in |allowedDevice|@{{[[devices]]}}, if no such element exists,
+     abort these steps.
+  2. Remove |allowedDevice| from
+     <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code>.
+
+## Events ## {#events}
+
+<xmp class="idl">
+dictionary USBConnectionEventInit : EventInit {
+    required USBDevice device;
+};
+
+[
+  Exposed=(DedicatedWorker,SharedWorker,Window),
+  SecureContext
+]
+interface USBConnectionEvent : Event {
+  constructor(DOMString type, USBConnectionEventInit eventInitDict);
+  [SameObject] readonly attribute USBDevice device;
+};
+</xmp>
+
+Note: Workers may register event listeners for <a>connect</a> and
+<a>disconnect</a> events but the event listener will not be invoked unless the
+worker is active.
+
+When the UA detects a new <a>USB device</a> |device| connected to the host it
+MUST perform the following steps for each script execution environment:
+
+  1. Let |storage| be the {{USBPermissionStorage}} object in the current
+     script execution environment.
+  2. <a>Check permissions for |device|</a> with |storage| and let
+     |allowedDevice| be the result.
+  3. If |allowedDevice| is <code>null</code>, abort these steps.
+  4. Let |deviceObj| be the {{USBDevice}} object representing |device|.
+  5. [=Fire an event=] named <dfn>connect</dfn> on |device|'s [=relevant global
+     object=]'s {{Navigator}} object's {{Navigator/usb}}, using
+     {{USBConnectionEvent}}, with the <code>device</code> attribute set to 
+     |deviceObj|.
+
+When the UA detects a <a>USB device</a> |device| has been disconnected from the
+host it MUST perform the following steps for each script execution environment:
+
+  1. Let |storage| be the {{USBPermissionStorage}} object in the current
+     script execution environment.
+  2. Search for an element |allowedDevice| in
+     <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code> where
+     |device| is in |allowedDevice|@{{[[devices]]}}, if no such element exists,
+     abort these steps.
+  3. Remove |device| from |allowedDevice|@{{[[devices]]}}.
+  4. If <code>|allowedDevice|.{{AllowedUSBDevice/serialNumber}}</code> is
+     <code>undefined</code> and |allowedDevice|@{{[[devices]]}} is empty remove
+     |allowedDevice| from
+     <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code>.
+  5. Let |device| be the {{USBDevice}} object representing |device|.
+  6. [=Fire an event=] named <dfn>disconnect</dfn> on |device|'s [=relevant
+     global object=]'s {{Navigator}} object's {{Navigator/usb}}, using
+     {{USBConnectionEvent}}, with the <code>device</code> attribute set to 
+     |device|.
+
+# Device Usage # {#device-usage}
+
+<div class="example">
+In this example we imagine a data logging device supporting up to 8 16-bit data
+channels. It has a single configuration (<code>bConfigurationValue 1</code>)
+with a single interface (<code>bInterfaceNumber 1</code>) with a single
+bulk endpoint (<code>bEndpointAddress 0x81</code> which means that it is
+endpoint 1 and an IN endpoint). When data is sampled it is available on this
+endpoint. The maximum packet size on this endpoint is 16 bytes to support all 8
+channels being activated at the same time. To save bus bandwidth, however, any
+combination of channels can be activated and deactivated. The packet will only
+be the length necessary to transmit the data collected.
+
+To get started we open the device, select the first configuration (it only has
+one but the operating system may not have already done this during enumeration)
+and claim the data logging interface,
+
+<pre highlight="js">
+  await device.<a idl for="USBDevice" data-lt="open()">open</a>();
+  if (device.<a idl for="USBDevice">configuration</a> === null)
+    await device.<a idl for="USBDevice" data-lt="selectConfiguration()">selectConfiguration</a>(1);
+  await device.<a idl for="USBDevice" data-lt="claimInterface()">claimInterface</a>(1);
+</pre>
+
+For this particular application we care about reading from channels 1, 2 and 5
+so we issue a <a>control transfer</a> to activate these channels,
+
+<pre highlight="js">
+  await device.<a idl for="USBDevice" data-lt="controlTransferOut()">controlTransferOut</a>({
+      <a idl for="USBControlTransferParameters">requestType</a>: '<a idl for="USBRequestType">vendor</a>',
+      <a idl for="USBControlTransferParameters">recipient</a>: '<a idl for="USBRecipient">interface</a>',
+      <a idl for="USBControlTransferParameters">request</a>: 0x01,  // vendor-specific request: enable channels
+      <a idl for="USBControlTransferParameters">value</a>: 0x0013,  // 0b00010011 (channels 1, 2 and 5)
+      <a idl for="USBControlTransferParameters">index</a>: 0x0001   // Interface 1 is the recipient
+  });
+</pre>
+
+The application may now start polling the device for data. As we only expect
+data from 3 channels we request a 6 byte buffer. As long as we receive a
+complete buffer the captured values (transmitted in big endian) are printed to
+the console log. If the device has encountered an error and signals this by
+stalling the endpoint then the error is cleared before continuing,
+
+<pre highlight="js">
+  while (true) {
+    let result = await device.<a idl for="USBDevice" data-lt="transferIn()">transferIn</a>(1, 6);
+
+    if (result.<a idl for="USBInTransferResult">data</a> && result.data.byteLength === 6) {
+      console.log('Channel 1: ' + result.data.getUint16(0));
+      console.log('Channel 2: ' + result.data.getUint16(2));
+      console.log('Channel 5: ' + result.data.getUint16(4));
+    }
+
+    if (result.<a idl for="USBInTransferResult">status</a> === 'stall') {
+      console.warn('Endpoint stalled. Clearing.');
+      await device.<a idl for="USBDevice" data-lt="clearHalt()">clearHalt</a>(1);
+    }
+  }
+</pre>
+</div>
+
+## The USBDevice Interface ## {#usbdevice-interface}
+
+<xmp class="idl">
+  enum USBTransferStatus {
+    "ok",
+    "stall",
+    "babble"
+  };
+
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBInTransferResult {
+    constructor(USBTransferStatus status, optional DataView? data);
+    readonly attribute DataView? data;
+    readonly attribute USBTransferStatus status;
+  };
+
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBOutTransferResult {
+    constructor(USBTransferStatus status, optional unsigned long bytesWritten = 0);
+    readonly attribute unsigned long bytesWritten;
+    readonly attribute USBTransferStatus status;
+  };
+
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBIsochronousInTransferPacket {
+    constructor(USBTransferStatus status, optional DataView? data);
+    readonly attribute DataView? data;
+    readonly attribute USBTransferStatus status;
+  };
+
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBIsochronousInTransferResult {
+    constructor(sequence<USBIsochronousInTransferPacket> packets, optional DataView? data);
+    readonly attribute DataView? data;
+    readonly attribute FrozenArray<USBIsochronousInTransferPacket> packets;
+  };
+
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBIsochronousOutTransferPacket {
+    constructor(USBTransferStatus status, optional unsigned long bytesWritten = 0);
+    readonly attribute unsigned long bytesWritten;
+    readonly attribute USBTransferStatus status;
+  };
+
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBIsochronousOutTransferResult {
+    constructor(sequence<USBIsochronousOutTransferPacket> packets);
+    readonly attribute FrozenArray<USBIsochronousOutTransferPacket> packets;
+  };
+
+  [Exposed=(DedicatedWorker,SharedWorker,Window), SecureContext]
+  interface USBDevice {
+    readonly attribute octet usbVersionMajor;
+    readonly attribute octet usbVersionMinor;
+    readonly attribute octet usbVersionSubminor;
+    readonly attribute octet deviceClass;
+    readonly attribute octet deviceSubclass;
+    readonly attribute octet deviceProtocol;
+    readonly attribute unsigned short vendorId;
+    readonly attribute unsigned short productId;
+    readonly attribute octet deviceVersionMajor;
+    readonly attribute octet deviceVersionMinor;
+    readonly attribute octet deviceVersionSubminor;
+    readonly attribute DOMString? manufacturerName;
+    readonly attribute DOMString? productName;
+    readonly attribute DOMString? serialNumber;
+    readonly attribute USBConfiguration? configuration;
+    readonly attribute FrozenArray<USBConfiguration> configurations;
+    readonly attribute boolean opened;
+    Promise<undefined> open();
+    Promise<undefined> close();
+    Promise<undefined> forget();
+    Promise<undefined> selectConfiguration(octet configurationValue);
+    Promise<undefined> claimInterface(octet interfaceNumber);
+    Promise<undefined> releaseInterface(octet interfaceNumber);
+    Promise<undefined> selectAlternateInterface(octet interfaceNumber, octet alternateSetting);
+    Promise<USBInTransferResult> controlTransferIn(USBControlTransferParameters setup, unsigned short length);
+    Promise<USBOutTransferResult> controlTransferOut(USBControlTransferParameters setup, optional BufferSource data);
+    Promise<undefined> clearHalt(USBDirection direction, octet endpointNumber);
+    Promise<USBInTransferResult> transferIn(octet endpointNumber, unsigned long length);
+    Promise<USBOutTransferResult> transferOut(octet endpointNumber, BufferSource data);
+    Promise<USBIsochronousInTransferResult> isochronousTransferIn(octet endpointNumber, sequence<unsigned long> packetLengths);
+    Promise<USBIsochronousOutTransferResult> isochronousTransferOut(octet endpointNumber, BufferSource data, sequence<unsigned long> packetLengths);
+    Promise<undefined> reset();
+  };
+</xmp>
+
+Instances of {{USBDevice}} are created with the <a>internal
+slots</a> described in the following table:
+
+<table class="data" dfn-for="USBDevice" dfn-type="attribute">
+  <tr>
+    <th><a>Internal Slot</a></th>
+    <th>Initial Value</th>
+    <th>Description (non-normative)</th>
+  </tr>
+  <tr>
+    <td><dfn>\[[configurations]]</dfn></td>
+    <td>An empty <a>sequence</a> of {{USBConfiguration}}</code></td>
+    <td>
+      All configurations supported by this device.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[configurationValue]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The current configuration value of the device.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[selectedAlternateSetting]]</dfn></td>
+    <td>An <a>empty</a> list of <a>integer</a></td>
+    <td>
+      The current alternate setting for each interface on the current configuration.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[claimedInterface]]</dfn></td>
+    <td>An <a>empty</a> list of <a>boolean</a></td>
+    <td>
+      The claimed status for each interface on the current configuration.
+    </td>
+  </tr>
+</table>
+
+<div algorithm="find the device descriptor for the connected USB device">
+    To <dfn>find the device descriptor for the connected USB device</dfn>,
+    perform the following steps:
+    1. Let |deviceDescriptor| be the <a>device descriptor</a> of the connected
+        device by performing <a>Get Descriptor</a> with
+        <code>DescriptorType</code> set to <code>DEVICE</code>.
+    1. Return |deviceDescriptor|.
+</div>
+
+<div algorithm="find a list of configuration descriptors for the connected USB device">
+    To <dfn>find a list of configuration descriptors for the connected USB device</dfn>,
+    perform the following steps:
+    1. Let |deviceDescriptor| be the result of
+        <a>finding the device descriptor for the connected USB device</a>.
+    1. Let |numConfigurations| be <code>bNumConfigurations</code> of |deviceDescriptor|.
+    1. Let |configurationIndex| be 0.
+    1. Let |configurationDescriptors| be an <a>empty</a> <a>list</a>.
+    1. While |configurationIndex| is less than |numConfigurations|:
+        1. Let |descriptors| be the a list of <a>descriptors</a>
+            by performing <a>Get Descriptor</a> with
+            <code>DescriptorType</code> set to <code>CONFIGURATION</code> and
+            <code>DescriptorIndex</code> set to |configurationIndex|.
+        1. If the <code>bDescriptorType</code> of the |descriptors|[0] is equal to <code>CONFIGURATION</code>,
+            <a>append</a> |descriptors|[0] to |configurationDescriptors|.
+        1. Increment |configurationIndex| by 1.
+    1. Return |configurationDescriptors|.
+</div>
+
+<div algorithm="abort transfers currently scheduled on an interface">
+    To <dfn>abort transfers currently scheduled on an interface</dfn> with the given |interface| object,
+    perform the following steps:
+    1. Let |configuration| be |interface|.{{USBInterface/[[configuration]]}}.
+    1. Let |device| be |configuration|.{{USBConfiguration/[[device]]}}.
+    1. If |configuration| is not the same as the result of <a>finding the current configuration</a>
+        with |device|, return.
+    1. If the result of <a>finding if the interface is claimed</a> with |interface|
+        is not <code>true</code>, return.
+    1. Let |currAlternateInterface| be the result of
+        <a>finding the alternate interface for the current alternate setting</a> with |interface|.
+    1. <a>For each</a> |endpoint| of |currAlternateInterface|.{{USBAlternateInterface/[[endpoints]]}}:
+        1. Abort all transfers currently scheduled on |endpoint| and <a>reject</a>
+            the associated promises with an {{AbortError}}.
+</div>
+
+<div algorithm="find the interface index">
+    To <dfn>find the interface index</dfn> with the given |interfaceNumber| and |configuration| object,
+    perform the following steps:
+    1. Let |interfaceIndex| be 0.
+    1. While |interfaceIndex| is less than the <a>size</a> of |configuration|.{{USBConfiguration/[[interfaces]]}}:
+        1. If |configuration|.{{USBConfiguration/[[interfaces]]}}[|interfaceIndex|].{{USBInterface/[[interfaceNumber]]}}
+            is equal to |interfaceNumber|, return |interfaceIndex|.
+        1. Increment |interfaceIndex| by 1.
+    1. Return <code>-1</code>.
+</div>
+
+<div algorithm="find the alternate index">
+    To <dfn>find the alternate index</dfn> with the given |alternateSetting| and |interface| object,
+    perform the following steps:
+    1. Let |alternateIndex| be 0.
+    1. While |alternateIndex| is less than the <a>size</a> of |interface|.{{USBInterface/[[alternates]]}}:
+        1. If |interface|.{{USBInterface/[[alternates]]}}[|alternateIndex|].{{USBAlternateInterface/[[alternateSetting]]}}
+            is equal to |alternateSetting|, return |alternateIndex|.
+        1. Increment |alternateIndex| by 1.
+    1. Return <code>-1</code>.
+</div>
+
+<div algorithm="find the current configuration">
+    To <dfn>find the current configuration</dfn> with the given |device| object,
+    perform the following steps:
+    1. <a>For each</a> |configuration| of |device|.{{USBDevice/[[configurations]]}}:
+        1. If |configuration|.{{USBConfiguration/[[configurationValue]]}} is equal to 
+            |device|.{{USBDevice/[[configurationValue]]}}, return |configuration|.
+    1. Return <code>null</code>.
+</div>
+
+<div algorithm="find the endpoint">
+    To <dfn>find the endpoint</dfn> with the given |endpointAddress| and |device| object,
+    perform the following steps:
+    1. Let |configuration| be the result of <a>finding the current configuration</a>
+        with |device|.
+    1. If |configuration| is <code>null</code>, return <code>null</code>.
+    1. <a>For each</a> |interface| of |configuration|.{{USBConfiguration/[[interfaces]]}}:
+        1. If the result of <a>finding if the interface is claimed</a> with |interface|
+            is not <code>true</code>, continue.
+        1. Let |alternate| be the result of
+            <a>finding the alternate interface for the current alternate setting</a> with |interface|.
+        1. <a>For each</a> |endpoint| of |alternate|.{{USBAlternateInterface/[[endpoints]]}}:
+            1. If |endpoint|.{{USBEndpoint/[[endpointAddress]]}} is equal to |endpointAddress|, return |endpoint|
+    1. Return <code>null</code>.
+</div>
+
+<div algorithm="check if the device is configured">
+    To <dfn>check if the device is configured</dfn> with the given |device| and |promise|,
+    perform the following steps:
+    1. If the |device| is no longer connected to the system, <a>reject</a> |promise| 
+        with a {{NotFoundError}} and abort these steps.
+    1. If <code>|device|.{{USBDevice/opened}}</code> is not <code>true</code>, or
+        |device|.{{USBDevice/[[configurationValue]]}} is equal to <code>0</code>,
+        <a>reject</a> |promise| with an {{InvalidStateError}}.
+</div>
+
+<div algorithm="USBDevice constructor">
+    When a USB device is connected and detected, a new {{USBDevice}} object
+    representing a connected USB device is constructed by performing the following steps:
+    1. Set <a>this</a>.{{USBDevice/[[configurationValue]]}} to the returned value of <a>Get Configuration</a>.
+    1. Let |configurationDescriptors| be the result of
+        <a>finding a list of configuration descriptors for the connected USB device</a>.
+    1. <a>For each</a> |configurationDescriptor| of |configurationDescriptors|:
+        1. Let |configuration| be a <a>new</a> {{USBConfiguration}} object
+            using <a>USBConfiguration(|device|,|configurationValue|)</a>
+            with |device| set to <a>this</a> and
+            |configurationValue| set to <code>bConfigurationValue</code> of |configurationDescriptor|.
+        1. <a>Append</a> |configuration| to <a>this</a>.{{USBDevice/[[configurations]]}}.
+        1. If <code>bConfigurationValue</code> of |configurationDescriptor| is equal to
+            <a>this</a>.{{USBDevice/[[configurationValue]]}}:
+            1. Let |numInterfaces| be the <a>size</a> of |configuration|.{{USBConfiguration/[[interfaces]]}}.
+            1. Resize <a>this</a>.{{USBDevice/[[selectedAlternateSetting]]}} to |numInterfaces|.
+            1. Fill <a>this</a>.{{USBDevice/[[selectedAlternateSetting]]}} with 0.
+            1. Resize <a>this</a>.{{USBDevice/[[claimedInterface]]}} to |numInterfaces|.
+            1. Fill <a>this</a>.{{USBDevice/[[claimedInterface]]}} with <code>false</code>.
+</div>
+
+All USB devices MUST have a <a>default control pipe</a> which is
+<code>endpointNumber 0</code>.
+
+### Attributes ### {#usbdevice-attributes}
+
+<dl dfn-type=attribute dfn-for="USBDevice">
+    : <dfn>usbVersionMajor</dfn>
+    : <dfn>usbVersionMinor</dfn>
+    : <dfn>usbVersionSubminor</dfn>
+    ::
+        The {{USBDevice/usbVersionMajor}}, {{USBDevice/usbVersionMinor}} and
+        {{USBDevice/usbVersionSubminor}} attributes declare the USB protocol version
+        supported by the device. They SHALL correspond to the value of the
+        <code>bcdUSB</code> field of the <a>device descriptor</a> such that a value of
+        <code>0xJJMN</code> has major version <code>JJ</code>, minor version
+        <code>M</code> and subminor version <code>N</code>.
+
+    : <dfn>deviceClass</dfn>
+    : <dfn>deviceSubclass</dfn>
+    : <dfn>deviceProtocol</dfn>
+    ::
+        The {{USBDevice/deviceClass}}, {{USBDevice/deviceSubclass}} and
+        {{USBDevice/deviceProtocol}} attributes declare the communication interface
+        supported by the device. They MUST correspond respectively to the values of the
+        <code>bDeviceClass</code>, <code>bDeviceSubClass</code> and
+        <code>bDeviceProtocol</code> fields of the <a>device descriptor</a>.
+
+    : <dfn>vendorId</dfn>
+    : <dfn>productId</dfn>
+    ::
+        The {{USBDevice/vendorId}} and {{USBDevice/productId}} MUST be equal to the
+        device's <a>vendor ID</a> and <a>product ID</a>.
+
+    : <dfn>deviceVersionMajor</dfn>
+    : <dfn>deviceVersionMinor</dfn>
+    : <dfn>deviceVersionSubminor</dfn>
+    ::
+        The {{USBDevice/deviceVersionMajor}}, {{USBDevice/deviceVersionMinor}} and
+        {{USBDevice/deviceVersionSubminor}} attributes declare the device release
+        number as defined by the device manufacturer. It SHALL correspond to the value
+        of the <code>bcdDevice</code> field of the <a>device descriptor</a> such that a
+        value of <code>0xJJMN</code> has major version <code>JJ</code>, minor version
+        <code>M</code> and subminor version <code>N</code>.
+
+    : <dfn>manufacturerName</dfn>
+    : <dfn>productName</dfn>
+    : <dfn>serialNumber</dfn>
+    ::
+        The {{USBDevice/manufacturerName}}, {{USBDevice/productName}} and
+        {{USBDevice/serialNumber}} attributes SHOULD contain the values of the <a>string
+        descriptors</a> indexed by the <code>iManufacturer</code>, <code>iProduct</code>
+        and <code>iSerialNumber</code> fields of the <a>device descriptor</a> if each is
+        defined.
+
+    : <dfn>configuration</dfn>
+    ::
+        The {{USBDevice/configuration}} attribute contains the currently selected
+        configuration for the device and SHALL be one of the {{USBConfiguration}} in
+        {{USBDevice/configurations}}.
+
+        The {{USBDevice/configuration}} getter steps are:
+          1. Return the result of <a>finding the current configuration</a> with <a>this</a>.
+
+    : <dfn>configurations</dfn>
+    ::
+        The {{USBDevice/configurations}} attribute contains a <a>sequence</a> of
+        {{USBConfiguration}} representing configurations supported by the device.
+
+        The {{USBDevice/configurations}} getter steps are:
+          1. Return <a>this</a>.{{USBDevice/[[configurations]]}}.
+
+    : <dfn>opened</dfn>
+    ::
+        The {{USBDevice/opened}} attribute SHALL be set to <code>true</code> when the
+        device is opened by the current execution context and SHALL be set to
+        <code>false</code> otherwise.
+</dl>
+
+### Methods ### {#usbdevice-methods}
+
+<div algorithm="USBDevice.open()">
+    The <dfn for=USBDevice method>open()</dfn> method,
+    when invoked, MUST return a new {{Promise}}
+    |promise| and run the following steps <a>in parallel</a>:
+    1. If <a>this</a> is no longer connected to the system, <a>reject</a> |promise|
+        with a {{NotFoundError}} and abort these steps.
+    1. If <code><a>this</a>.{{USBDevice/opened}}</code> is <code>true</code>
+        <a>resolve</a> |promise| and abort these steps.
+    1. Perform the necessary platform-specific steps to begin a session with the
+        device. If these fail for any reason <a>reject</a> |promise| with a
+        {{NetworkError}} and abort these steps.
+    1. Set <code><a>this</a>.{{USBDevice/opened}}</code> to <code>true</code> and
+        <a>resolve</a> |promise|.
+</div>
+
+<div algorithm="USBDevice.close()">
+    The <dfn for=USBDevice method>close()</dfn> method,
+    when invoked, MUST return a new {{Promise}}
+    |promise| and run the following steps <a>in parallel</a>:
+    1. If <a>this</a> is no longer connected to the system, <a>reject</a> |promise|
+        with a {{NotFoundError}} and abort these steps.
+    1. If <code><a>this</a>.{{USBDevice/opened}}</code> is <code>false</code>
+        <a>resolve</a> |promise| and abort these steps.
+    1. Abort all other algorithms currently running against this device and
+        <a>reject</a> their associated promises with an {{AbortError}}.
+    1. Perform the necessary platform-specific steps to release any claimed
+        interfaces as if {{USBDevice/releaseInterface(interfaceNumber)}} had been
+        called for each claimed interface.
+    1. Perform the necessary platform-specific steps to end the session with the
+        device.
+    1. Set <code><a>this</a>.{{USBDevice/opened}}</code> to <code>false</code> and
+        <a>resolve</a> |promise|.
+
+    Note: When no [[!ECMAScript]] code can observe an instance of {{USBDevice}} |device|
+    anymore, the UA SHOULD run |device|.{{USBDevice/close()}}.
+</div>
+
+<div algorithm="USBDevice.forget()">
+    The <dfn for=USBDevice method>forget()</dfn> method,
+    when invoked, MUST return a new {{Promise}}
+    |promise| and run the following steps <a>in parallel</a>:
+
+    1. Let |device| be <a>this</a>.
+    1. Let |storage| be the {{USBPermissionStorage}} object in the current
+        script execution environment.
+    1. <a>Remove |device| from storage</a> with |storage|.
+    1. <a>Resolve</a> |promise|.
+
+    Note: The user agent MAY decide to combine permissions across APIs, for instance
+    tracking WebHID + WebUSB device access under a unified low-level device access
+    permission. For this reason, this method may also revoke additional (unspecified
+    yet) permissions in the future.
+</div>
+
+<div algorithm="USBDevice.selectConfiguration(configurationValue)">
+    The <dfn for=USBDevice method>selectConfiguration(|configurationValue|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the following steps <a>in
+    parallel</a>:
+    1. If <a>this</a> is no longer connected to the system, <a>reject</a> |promise|
+        with a {{NotFoundError}} and abort these steps.
+    1. Let |selectedConfiguration| be <code>null</code>.
+    1. <a>For each</a> |configuration| of <a>this</a>.{{USBDevice/[[configurations]]}}:
+        1. If |configuration|.{{USBConfiguration/[[configurationValue]]}} is equal to
+            |configurationValue|, set |selectedConfiguration| to |configuration|
+            and break.
+    1. If |selectedConfiguration| is <code>null</code>, <a>reject</a> |promise|
+        with a {{NotFoundError}} and abort these steps.
+    1. If <code><a>this</a>.{{USBDevice/opened}}</code> is not equal to
+        <code>true</code> <a>reject</a> |promise| with an {{InvalidStateError}} and
+        abort these steps.
+    1. Let |activeConfiguration| be the result of <a>finding the current configuration</a>
+        with <a>this</a>.
+    1. If |activeConfiguration| is not <code>null</code>.
+        1. <a>For each</a> |interface| of |activeConfiguration|.{{USBConfiguration/[[interfaces]]}}:
+            1. <a>Abort transfers currently scheduled on an interface</a> with |interface|.
+    1. Issue a <code>SET_CONFIGURATION</code> <a>control transfer</a> with
+        <code>configurationValue</code> set to the |configurationValue|.
+        If this step fails <a>reject</a> |promise| with a {{NetworkError}} and
+        abort these steps.
+    1. Let |numInterfaces| be the <a>size</a> of |selectedConfiguration|.{{USBConfiguration/[[interfaces]]}}.
+    1. Resize <a>this</a>.{{USBDevice/[[selectedAlternateSetting]]}} to |numInterfaces|.
+    1. Fill <a>this</a>.{{USBDevice/[[selectedAlternateSetting]]}} with 0.
+    1. Resize <a>this</a>.{{USBDevice/[[claimedInterface]]}} to |numInterfaces|.
+    1. Fill <a>this</a>.{{USBDevice/[[claimedInterface]]}} with <code>false</code>.
+    1. Set <a>this</a>.{{USBDevice/[[configurationValue]]}} to |configurationValue| 
+        and <a>resolve</a> |promise|.
+</div>
+
+<div algorithm="USBDevice.claimInterface(interfaceNumber)">
+    The <dfn for=USBDevice method>claimInterface(|interfaceNumber|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the following 
+    steps <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Let |activeConfiguration| be the result of <a>finding the current configuration</a>
+        with <a>this</a>.
+    1. Let |interfaces| be |activeConfiguration|.{{USBConfiguration/[[interfaces]]}}.
+    1. Let |interfaceIndex| be the result of <a>finding the interface index</a> with
+        |interfaceNumber| and |activeConfiguration|.
+    1. If |interfaceIndex| is equal to <code>-1</code>, <a>reject</a> |promise|
+        with a {{NotFoundError}} and abort these steps.
+    1. If <a>this</a>.{{USBDevice/[[claimedInterface]]}}[|interfaceIndex|] is <code>true</code>,
+        <a>resolve</a> |promise| and abort these steps.
+    1. Let |unrestricted| be <code>false</code>.
+    1. Let |document| be <a>this</a>'s [=relevant global object=]'s [=associated Document=], or
+        <code>null</code> if there is no associated {{Document}}.
+    1. If |document| is not <code>null</code> and |document| is [=allowed to use=] the
+        [=policy-controlled feature=] named <code>"usb-unrestricted"</code>, set |unrestricted| to
+        <code>true</code>.
+    1. If |interfaces|[|interfaceIndex|].{{USBInterface/[[isProtectedClass]]}} is <code>true</code>
+        and |unrestricted| is <code>false</code>, [=reject=] |promise| with a {{SecurityError}} and
+        abort these steps.
+    1. Perform the necessary platform-specific steps to request exclusive control
+        over |interfaces|[|interfaceIndex|] for the current execution context. If this fails,
+        <a>reject</a> |promise| with a {{NetworkError}} and abort these steps.
+    1. Set <a>this</a>.{{USBDevice/[[claimedInterface]]}}[|interfaceIndex|] to <code>true</code>
+        and <a>resolve</a> |promise|.
+</div>
+
+<div algorithm="USBDevice.releaseInterface(interfaceNumber)">
+    The <dfn for=USBDevice method>releaseInterface(|interfaceNumber|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the following
+    steps <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Let |activeConfiguration| be the result of <a>finding the current configuration</a>
+        with <a>this</a>.
+    1. Let |interfaces| be |activeConfiguration|.{{USBConfiguration/[[interfaces]]}}.
+    1. Let |interfaceIndex| be the result of <a>finding the interface index</a> with
+        |interfaceNumber| and |activeConfiguration|.
+    1. If |interfaceIndex| is equal to <code>-1</code>, <a>reject</a> |promise|
+        with a {{NotFoundError}} and abort these steps.
+    1. If <a>this</a>.{{USBDevice/[[claimedInterface]]}}[|interfaceIndex|] is <code>false</code>,
+        <a>resolve</a> |promise| and abort these steps.
+    1. Perform the necessary platform-specific steps to reliquish exclusive
+        control over |interfaces|[|interfaceIndex|].
+    1. Set <a>this</a>.{{USBDevice/[[selectedAlternateSetting]]}}[|interfaceIndex|] to <code>0</code>.
+    1. Set <a>this</a>.{{USBDevice/[[claimedInterface]]}}[|interfaceIndex|] to <code>false</code>
+        and <a>resolve</a> |promise|.
+</div>
+
+<div algorithm="USBDevice.selectAlternateInterface(interfaceNumber, alternateSetting)">
+    The <dfn for=USBDevice method>selectAlternateInterface(|interfaceNumber|, |alternateSetting|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the
+    following steps <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Let |activeConfiguration| be the result of <a>finding the current configuration</a>
+        with <a>this</a>.
+    1. Let |interfaces| be |activeConfiguration|.{{USBConfiguration/[[interfaces]]}}.
+    1. Let |interfaceIndex| be the result of <a>finding the interface index</a> with
+        |interfaceNumber| and |activeConfiguration|.
+    1. If |interfaceIndex| is equal to <code>-1</code>, <a>reject</a> |promise|
+        with a {{NotFoundError}} and abort these steps.
+    1. If <a>this</a>.{{USBDevice/[[claimedInterface]]}}[|interfaceIndex|
+        is not <code>true</code>, <a>reject</a> |promise| with an
+        {{InvalidStateError}} and abort these steps.
+    1. Let |interface| be |interfaces|[|interfaceIndex|].
+    1. Let |alternateIndex| be the result of <a>finding the alternate index</a> with
+        |alternateSetting| and |interface|.
+    1. If |alternateIndex| is equal to <code>-1</code>, <a>reject</a> |promise|
+        with a {{NotFoundError}} and abort these steps.
+    1. <a>Abort transfers currently scheduled on an interface</a> with |interface|.
+    1. Issue a <code>SET_INTERFACE</code> <a>control transfer</a> with
+        <code>interfaceNumber</code> set to the |interfaceNumber| and
+        <code>alternateSetting</code> set to the |alternateSetting|.
+        If this step fails <a>reject</a> |promise| with a {{NetworkError}} and
+        abort these steps.
+    1. Set <a>this</a>.{{USBDevice/[[selectedAlternateSetting]]}}[|interfaceIndex|]
+        to |alternateSetting|.
+    1. <a>Resolve</a> |promise|.
+</div>
+
+<div algorithm="USBDevice.controlTransferIn(setup, length)">
+    The <dfn for=USBDevice method>controlTransferIn(|setup|, |length|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the following steps
+    <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. <a>Check the validity of the control transfer parameters</a> with <a>this</a>
+        and abort these steps if |promise| is rejected.
+    1. If |length| is greater than 0, let |buffer| be a host buffer with space
+        for |length| bytes.
+    1. Issue a <a>control transfer</a> to <a>this</a> with the setup packet parameters
+        provided in |setup|, the data transfer direction in
+        <code>bmRequestType</code> set to "device to host" and <code>wLength</code>
+        set to |length|. If defined also provide |buffer| as the destination to
+        write data received in response to this transfer.
+    1. Let |bytesTransferred| be the number of bytes written to |buffer|.
+    1. Let |result| be a new {{USBInTransferResult}}.
+    1. If data was received from the device create a new {{ArrayBuffer}} containing
+        the first |bytesTransferred| bytes of |buffer| and set
+        <code>|result|.{{USBInTransferResult/data}}</code> to a new {{DataView}}
+        constructed over it.
+    1. If the device responded by stalling the
+        <a>default control pipe</a> set
+        <code>|result|.{{USBInTransferResult/status}}</code> to {{"stall"}}.
+    1. If the device responded with more than |length| bytes of data set
+        <code>|result|.{{USBInTransferResult/status}}</code> to {{"babble"}} and
+        otherwise set it to {{"ok"}}.
+    1. If the transfer fails for any other reason <a>reject</a> |promise| with a
+        {{NetworkError}} and abort these steps.
+    1. <a>Resolve</a> |promise| with |result|.
+</div>
+
+<div algorithm="USBDevice.controlTransferOut(setup, data)">
+    The <dfn for=USBDevice method>controlTransferOut(|setup|, |data|)</dfn> method,
+    when invoked, must return a new {{Promise}} |promise| and run the following
+    steps <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. <a>Check the validity of the control transfer parameters</a> with <a>this</a>
+        and abort these steps if |promise| is rejected.
+    1. Issue a <a>control transfer</a> with the <a>setup packet</a> populated by
+        |setup| and the data transfer direction in <code>bmRequestType</code> set
+        to "host to device" and <code>wLength</code> set to
+        <code>|data|.length</code>. Transmit |data| in the <a>data stage</a> of
+        the transfer.
+    1. Let |result| be a new {{USBOutTransferResult}}.
+    1. If the device responds by stalling the
+        <a>default control pipe</a> set
+        <code>|result|.{{USBOutTransferResult/status}}</code> to {{"stall"}}.
+    1. If the device acknowledges the transfer set
+        <code>|result|.{{USBOutTransferResult/status}}</code> to {{"ok"}} and
+        <code>|result|.{{USBOutTransferResult/bytesWritten}}</code> to
+        <code>|data|.length</code>.
+    1. If the transfer fails for any other reason <a>reject</a> |promise| with a
+        {{NetworkError}} and abort these steps.
+    1. <a>Resolve</a> |promise| with |result|.
+</div>
+
+<div algorithm="USBDevice.clearHalt(direction, endpointNumber)">
+    The <dfn for=USBDevice method>clearHalt(|direction|, |endpointNumber|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the following steps
+    <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Let |endpointAddress| be <code>|endpointNumber| | 0x80</code> if
+        |direction| is equal to {{USBDirection/"in"}}, and |endpointNumber|
+        otherwise.
+    1. Let |endpoint| be the result of <a>finding the endpoint</a> with
+        |endpointAddress| and <a>this</a>.
+    1. If |endpoint| is <code>null</code>, <a>reject</a> |promise| with a
+        {{NotFoundError}} and abort these steps.
+    1. Issue a <code>ClearFeature(ENDPOINT_HALT)</code> <a>control transfer</a> to
+        the device to clear the halt condition on |endpoint|.
+    1. On failure <a>reject</a> |promise| with a {{NetworkError}}, otherwise
+        <a>resolve</a> |promise|.
+</div>
+
+
+<div algorithm="USBDevice.transferIn(endpointNumber, length)">
+    The <dfn for=USBDevice method>transferIn(|endpointNumber|, |length|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the following steps
+    <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Let |endpointAddress| be <code>|endpointNumber| | 0x80</code>
+        (i.e {{USBDirection/"in"}} direction).
+    1. Let |endpoint| be the result of <a>finding the endpoint</a> with
+        |endpointAddress| and <a>this</a>.
+    1. If |endpoint| is <code>null</code>, <a>reject</a> |promise| with a
+        {{NotFoundError}} and abort these steps.
+    1. If |endpoint|.{{USBEndpoint/type}} is not equal to {{USBEndpointType/"bulk"}},
+        <a>reject</a> |promise| with an {{InvalidAccessError}} and abort these steps.
+    1. Let |buffer| be a host buffer with space for |length| bytes.
+    1. As appropriate for |endpoint| enqueue a <a lt="bulk transfer">bulk</a> or
+        <a lt="interrupt transfer">interrupt</a> <a>IN transfer</a> on |endpoint|
+        to receive |length| bytes of data from the device into |buffer|.
+    1. Let |bytesTransferred| be the number of bytes written to |buffer|.
+    1. Let |result| be a new {{USBInTransferResult}}.
+    1. If data was received from the device create a new {{ArrayBuffer}} containing
+        the first |bytesTransferred| bytes of |buffer| and set
+        <code>|result|.{{USBInTransferResult/data}}</code> to a new {{DataView}}
+        constructed over it.
+    1. If the device responded with more than |length| bytes of data set
+        <code>|result|.{{USBInTransferResult/status}}</code> to {{"babble"}}.
+    1. If the transfer ended because |endpoint| is halted set
+        <code>|result|.{{USBInTransferResult/status}}</code> to {{"stall"}}.
+    1. If the device acknowledged the complete transfer set
+        <code>|result|.{{USBInTransferResult/status}}</code> to {{"ok"}}.
+    1. If the transfer failed for any other reason <a>reject</a> |promise| with a
+        {{NetworkError}} and abort these steps.
+    1. <a>Resolve</a> |promise| with |result|.
+</div>
+
+<div algorithm="USBDevice.transferOut(endpointNumber, data)">
+    The <dfn for=USBDevice method>transferOut(|endpointNumber|, |data|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the following steps
+    <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Let |endpointAddress| be |endpointNumber| (i.e {{USBDirection/"out"}} direction).
+    1. Let |endpoint| be the result of <a>finding the endpoint</a> with
+        |endpointAddress| and <a>this</a>.
+    1. If |endpoint| is <code>null</code>, <a>reject</a> |promise| with a
+        {{NotFoundError}} and abort these steps.
+    1. If |endpoint|.{{USBEndpoint/type}} is not equal to {{USBEndpointType/"bulk"}},
+        <a>reject</a> |promise| with an {{InvalidAccessError}} and abort these steps.
+    1. As appropriate for |endpoint| enqueue a <a lt="bulk transfer">bulk</a> or
+        <a lt="interrupt transfer">interrupt</a> <a>OUT transfer</a> on |endpoint|
+        to transmit |data| to the device.
+    1. Let |result| be a new {{USBOutTransferResult}}.
+    1. Set <code>|result|.{{USBOutTransferResult/bytesWritten}}</code> to the
+        amount of data successfully sent to the device.
+    1. If the endpoint is stalled set
+        <code>|result|.{{USBOutTransferResult/status}}</code> to {{"stall"}}.
+    1. If the device acknowledges the complete transfer set
+        <code>|result|.{{USBOutTransferResult/status}}</code> to {{"ok"}}.
+    1. If the transfer fails for any other reason <a>reject</a> |promise| with a
+        {{NetworkError}} and abort these steps.
+    1. <a>Resolve</a> |promise| with |result|.
+</div>
+
+<div algorithm="USBDevice.isochronousTransferIn(endpointNumber, packetLengths)">
+    The <dfn for=USBDevice method>isochronousTransferIn(|endpointNumber|, |packetLengths|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the following
+    steps <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Let |endpointAddress| be <code>|endpointNumber| | 0x80</code>
+        (i.e {{USBDirection/"in"}} direction).
+    1. Let |endpoint| be the result of <a>finding the endpoint</a> with
+        |endpointAddress| and <a>this</a>.
+    1. If |endpoint| is <code>null</code>, <a>reject</a> |promise| with a
+        {{NotFoundError}} and abort these steps.
+    1. If |endpoint|.{{USBEndpoint/type}} is not equal to {{USBEndpointType/"isochronous"}},
+        <a>reject</a> |promise| with an {{InvalidAccessError}} and abort these steps.
+    1. Let |length| be the sum of the elements of |packetLengths|.
+    1. Let |buffer| be a new {{ArrayBuffer}} of |length| bytes.
+    1. Let |result| be a new {{USBIsochronousInTransferResult}} and set
+        <code>|result|.{{USBIsochronousInTransferResult/data}}</code> to a new
+        {{DataView}} constructed over |buffer|.
+    1. Enqueue an <a lt="isochronous transfers">isochronous IN transfer</a> on
+        |endpoint| that will write up to |length| bytes of data from the device
+        into |buffer|.
+    1. For each packet |i| from <code>0</code> to <code>|packetLengths|.length -
+        1</code>:
+        1. Let |packet| be a new {{USBIsochronousInTransferPacket}} and set
+            <code>|result|.{{USBIsochronousInTransferResult/packets}}[|i|]</code>
+            to |packet|.
+        1. Let |view| be a new {{DataView}} over the portion of |buffer|
+            containing the data received from the device for this packet and set
+            <code>|packet|.{{USBIsochronousInTransferPacket/data}}</code> to
+            |view|.
+        1. If the device responds with more than <code>|packetLengths|[i]</code>
+            bytes of data set
+            <code>|packet|.{{USBIsochronousInTransferPacket/status}}</code> to
+            {{"babble"}}.
+        1. If the transfer ends because |endpoint| is stalled set
+            <code>|packet|.{{USBIsochronousInTransferPacket/status}}</code> to
+            {{"stall"}}.
+        1. If the device acknowledges the complete transfer set
+            <code>|packet|.{{USBIsochronousInTransferPacket/status}}</code> to
+            {{"ok"}}.
+        1. If the transfer fails for any other reason <a>reject</a> |promise|
+            with a {{NetworkError}} and abort these steps.
+    1. <a>Resolve</a> |promise| with |result|.
+</div>
+
+<div algorithm="USBDevice.isochronousTransferOut(endpointNumber, data, packetLengths)">
+    The <dfn for=USBDevice method>isochronousTransferOut(|endpointNumber|, |data|, |packetLengths|)</dfn> method,
+    when invoked, MUST return a new {{Promise}} |promise| and run the
+    following steps <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Let |endpointAddress| be |endpointNumber| (i.e {{USBDirection/"out"}} direction).
+    1. Let |endpoint| be the result of <a>finding the endpoint</a> with
+        |endpointAddress| and <a>this</a>.
+    1. If |endpoint| is <code>null</code>, <a>reject</a> |promise| with a
+        {{NotFoundError}} and abort these steps.
+    1. If |endpoint|.{{USBEndpoint/type}} is not equal to {{USBEndpointType/"isochronous"}},
+        <a>reject</a> |promise| with an {{InvalidAccessError}} and abort these steps.
+    1. Let |result| be a new {{USBIsochronousOutTransferResult}}.
+    1. Enqueue an <a lt="isochronous transfers">isochronous OUT transfer</a> on
+        |endpoint| that will write |data| to the device, divided into
+        <code>|packetLength|.length</code> packets of
+        <code>|packetLength|[i]</code> bytes (for packets |i| from <code>0</code>
+        to <code>|packetLengths|.length - 1</code>).
+    1. For each packet |i| from <code>0</code> to <code>|packetLengths|.length -
+        1</code> the host attempts to send to the device:
+            1. Let |packet| be a new {{USBIsochronousOutTransferPacket}} and set
+                <code>|result|.{{USBIsochronousOutTransferResult/packets}}[i]</code>
+                to |packet|.
+            1. Let
+                <code>|packet|.{{USBIsochronousOutTransferPacket/bytesWritten}}</code>
+                be the amount of data successfully sent to the device as part of this
+                packet.
+            1. If the transfer ends because |endpoint| is stalled set
+                <code>|packet|.{{USBIsochronousOutTransferPacket/status}}</code> to
+                {{"stall"}}.
+            1. If the device acknowledges the complete transfer set
+                <code>|packet|.{{USBIsochronousOutTransferPacket/status}}</code> to
+                {{"ok"}}.
+            1. If the transfer fails for any other reason <a>reject</a> |promise|
+                with a {{NetworkError}} and abort these steps.
+    1. <a>Resolve</a> |promise| with |result|.
+</div>
+
+<div algorithm="USBDevice.reset()">
+    The <dfn for=USBDevice method>reset()</dfn> method,
+    when invoked, MUST return a new {{Promise}}
+    |promise| and run the following steps <a>in parallel</a>:
+    1. <a>Check if the device is configured</a> with <a>this</a> and |promise|
+        and abort these steps if |promise| is rejected.
+    1. Abort all operations on the device and <a>reject</a> their associated
+        promises with an {{AbortError}}.
+    1. Perform the necessary platform-specific operation to soft reset the device.
+    1. On failure <a>reject</a> |promise| with a {{NetworkError}}, otherwise
+        <a>resolve</a> |promise|.
+
+    Issue(36):
+    What configuration is the device in after it resets?
+</div>
+
+## The USBControlTransferParameters Dictionary ## {#usbtransfers-dictionary}
+
+<xmp class="idl">
+  enum USBRequestType {
+    "standard",
+    "class",
+    "vendor"
+  };
+
+  enum USBRecipient {
+    "device",
+    "interface",
+    "endpoint",
+    "other"
+  };
+
+  dictionary USBControlTransferParameters {
+    required USBRequestType requestType;
+    required USBRecipient recipient;
+    required octet request;
+    required unsigned short value;
+    required unsigned short index;
+  };
+</xmp>
+
+<div algorithm="check the validity of the control transfer parameters">
+    To <dfn>check the validity of the control transfer parameters</dfn> with the given
+    |device|, perform the following steps:
+
+    1. Let |setup| be the {{USBControlTransferParameters}} created for the transfer.
+    1. Let |promise| be the promise created for the transfer.
+    1. Let |configuration| be the result of <a>finding the current configuration</a>
+        with |device|.
+    1. If |configuration| is <code>null</code>, abort these steps.
+    1. If <code>|setup|.{{USBControlTransferParameters/recipient}}</code> is
+        {{"interface"}}, perform the following steps:
+        1. Let |interfaceNumber| be the lower 8 bits of
+            <code>|setup|.{{USBControlTransferParameters/index}}</code>.
+        1. Let |interfaceIndex| be the result of <a>finding the interface index</a> with
+            |interfaceNumber| and |configuration|.
+        1. If |interfaceIndex| is equal to <code>-1</code>, <a>reject</a> |promise|
+            with a {{NotFoundError}} and abort these steps.
+        1. Let |interface| be |configuration|.{{USBConfiguration/[[interfaces]]}}[|interfaceIndex|].
+        1. If the result of <a>finding if the interface is claimed</a> with |interface|
+            is not <code>true</code>, <a>reject</a> |promise| with an
+            {{InvalidStateError}} and abort these steps.
+    1. If <code>|setup|.{{USBControlTransferParameters/recipient}}</code> is
+        {{"endpoint"}}, run the following steps:
+        1. Let |endpointAddress| be |setup|.{{USBControlTransferParameters/index}}.
+        1. Let |endpoint| be the result of <a>finding the endpoint</a> with
+            |endpointAddress| and |device|.
+        1. If |endpoint| is <code>null</code>, <a>reject</a> |promise| with a
+            {{NotFoundError}} and abort these steps.
+        1. Let |alternate| be |endpoint|.{{USBEndpoint/[[alternateInterface]]}}.
+        1. Let |interface| be |alternate|.{{USBAlternateInterface/[[interface]]}}.
+        1. If the result of <a>finding if the interface is claimed</a> with |interface|
+            is not <code>true</code>, <a>reject</a> |promise| with an
+            {{InvalidStateError}} and abort these steps.
+</div>
+
+### Members ### {#usbtransfers-members}
+
+<dl dfn-type=dict-member dfn-for="USBControlTransferParameters">
+    : <dfn>requestType</dfn>
+    ::
+        The {{USBControlTransferParameters/requestType}} attribute populates part of
+        the <code>bmRequestType</code> field of the <a>setup packet</a> to indicate
+        whether this request is part of the USB standard, a particular USB device class
+        specification or a vendor-specific protocol.
+
+    : <dfn>recipient</dfn>
+    ::
+        The {{USBControlTransferParameters/recipient}} attribute populates part of the
+        <code>bmRequestType</code> field of the <a>setup packet</a> to indicate whether
+        the <a>control transfer</a> is addressed to the entire device, or a specific
+        interface or endpoint.
+
+    : <dfn>request</dfn>
+    ::
+        The {{USBControlTransferParameters/request}} attribute populates the
+        <code>bRequest</code> field of the <a>setup packet</a>. Valid requests are
+        defined by the USB standard, USB device class specifications or the device
+        vendor.
+
+    : <dfn>value</dfn>
+    ::
+        The {{USBControlTransferParameters/value}} and
+        {{USBControlTransferParameters/index}} attributes populate the
+        <code>wValue</code> and <code>wIndex</code> fields of the <a>setup packet</a>
+        respectively. The meaning of these fields depends on the request being made.    
+</dl>
+
+## The USBConfiguration Interface ## {#usbconfiguration-interface}
+
+<xmp class="idl">
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBConfiguration {
+    constructor(USBDevice device, octet configurationValue);
+    readonly attribute octet configurationValue;
+    readonly attribute DOMString? configurationName;
+    readonly attribute FrozenArray<USBInterface> interfaces;
+  };
+</xmp>
+
+Instances of {{USBConfiguration}} are created with the <a>internal
+slots</a> described in the following table:
+
+<table class="data" dfn-for="USBConfiguration" dfn-type="attribute">
+  <tr>
+    <th><a>Internal Slot</a></th>
+    <th>Initial Value</th>
+    <th>Description (non-normative)</th>
+  </tr>
+  <tr>
+    <td><dfn>\[[device]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The {{USBDevice}} object <a>this</a> belongs to.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[interfaces]]</dfn></td>
+    <td>An empty <a>sequence</a> of {{USBInterface}}</code></td>
+    <td>
+      All interfaces supported this configuration.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[configurationValue]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The configuration value for this configuration.
+    </td>
+  </tr>
+</table>
+
+<div algorithm="find a list of descriptors for a configuration">
+    To <dfn>find a list of descriptors for a configuration</dfn> with the given |configurationValue|,
+    perform the following steps:
+    1. Let |deviceDescriptor| be the result of
+        <a>finding the device descriptor for the connected USB device</a>.
+    1. Let |numConfigurations| be <code>bNumConfigurations</code> of |deviceDescriptor|.
+    1. Let |configurationIndex| be 0.
+    1. While |configurationIndex| is less than |numConfigurations|:
+        1. Let |descriptors| be the a list of <a>descriptors</a>
+            by performing <a>Get Descriptor</a> with
+            <code>DescriptorType</code> set to <code>CONFIGURATION</code> and
+            <code>DescriptorIndex</code> set to |configurationIndex|.
+        1. If <code>bDescriptorType</code> of |descriptors|[0] is equal to <code>CONFIGURATION</code> and
+            <code>bConfigurationValue</code> of |descriptors| is equal to |configurationValue|, return
+            |descriptors|.
+        1. Increment |configurationIndex| by 1.
+    1. Return <a>empty</a> result.
+</div>
+
+### Constructors ### {#usbconfiguration-constructors}
+
+<div algorithm="USBConfiguration constructor">
+    The <dfn constructor for=USBConfiguration>USBConfiguration(|device|, |configurationValue|)</dfn>
+    constructor MUST, when called, perform the following steps:
+    1. Set <a>this</a>.{{USBConfiguration/[[device]]}} to |device|.
+    1. Set <a>this</a>.{{USBConfiguration/[[configurationValue]]}} to |configurationValue|.
+    1. Let |descriptors| be the result of <a>finding a list of descriptors for a configuration</a>
+        with <code>configurationValue</code> set to |configurationValue|.
+    1. Let |seen| be an empty <a>ordered set</a>.
+    1. <a>For each</a> |descriptor| of |descriptors|:
+        1. If the <code>bDescriptorType</code> of the |descriptor|
+            is not equal to <code>INTERFACE</code>, continue.
+        1. If the <code>bInterfaceNumber</code> of the |descriptor|
+            is in |seen|, continue.
+        1. Let |interface| be a <a>new</a> {{USBInterface}} object using
+            <a>USBInterface(|configuration|,|interfaceNumber|)</a> with
+            |configuration| set to <a>this</a> and
+            |interfaceNumber| set to <code>bInterfaceNumber</code> of |descriptor|.
+        1. <a>Append</a> |interface| to <a>this</a>.{{USBConfiguration/[[interfaces]]}}.
+        1. <a>Append</a> <code>bInterfaceNumber</code> of |descriptor| to |seen|.
+</div>
+
+### Attributes ### {#usbconfiguration-attributes}
+<dl dfn-type=attribute dfn-for="USBConfiguration">
+    : <dfn>configurationValue</dfn>
+    ::
+        Each device configuration SHALL have a unique
+        {{USBConfiguration/configurationValue}} that matches the
+        <code>bConfigurationValue</code> fields of the <a>configuration descriptor</a>
+        that defines it.
+
+    : <dfn>configurationName</dfn>
+    ::
+        The {{USBConfiguration/configurationName}} attribute SHOULD contain the value
+        of the <a>string descriptor</a> referenced by the <code>iConfiguration</code>
+        field of the <a>configuration descriptor</a>, if defined.
+
+    : <dfn>interfaces</dfn>
+    ::
+        The {{USBConfiguration/interfaces}} attribute SHALL contain a list of
+        interfaces exposed by this device configuration. 
+
+        The {{USBConfiguration/interfaces}} getter steps are:
+          1. Return <a>this</a>.{{USBConfiguration/[[interfaces]]}}.
+</dl>
+
+Issue(46):
+Include some non-normative information about device configurations.
+
+## The USBInterface Interface ## {#usbinterface-interface}
+
+<xmp class="idl">
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBInterface {
+    constructor(USBConfiguration configuration, octet interfaceNumber);
+    readonly attribute octet interfaceNumber;
+    readonly attribute USBAlternateInterface alternate;
+    readonly attribute FrozenArray<USBAlternateInterface> alternates;
+    readonly attribute boolean claimed;
+  };
+</xmp>
+
+Instances of {{USBInterface}} are created with the <a>internal
+slots</a> described in the following table:
+
+<table class="data" dfn-for="USBInterface" dfn-type="attribute">
+  <tr>
+    <th><a>Internal Slot</a></th>
+    <th>Initial Value</th>
+    <th>Description (non-normative)</th>
+  </tr>
+  <tr>
+    <td><dfn>\[[configuration]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The {{USBConfiguration}} object <a>this</a> belongs to.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[interfaceNumber]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The interface number for this interface.
+    </td>
+  </tr>  
+  <tr>
+    <td><dfn>\[[alternates]]</dfn></td>
+    <td>An empty <a>sequence</a> of {{USBAlternateInterface}}</td>
+    <td>
+      All alternate settings supported by this interface.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[isProtectedClass]]</dfn></td>
+    <td><code>false</code></td>
+    <td>
+      If this interface has any alternate setting belonging to a protected class.
+    </td>
+  </tr>  
+</table>
+
+An [=interface descriptor=] |interface| <dfn>has a protected interface class</dfn>
+if and only if |interface|'s <code>bInterfaceClass</code> is equal to one
+of the following values.
+
+<table>
+  <caption>Protected interface classes</caption>
+  <tr>
+    <th>Code</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td><code>0x01</code></td>
+    <td>Audio</td>
+  </tr>
+  <tr>
+    <td><code>0x03</code></td>
+    <td>HID (Human Interface Device)</td>
+  </tr>
+  <tr>
+    <td><code>0x08</code></td>
+    <td>Mass Storage</td>
+  </tr>
+  <tr>
+    <td><code>0x0B</code></td>
+    <td>Smart Card</td>
+  </tr>
+  <tr>
+    <td><code>0x0E</code></td>
+    <td>Video</td>
+  </tr>
+  <tr>
+    <td><code>0x10</code></td>
+    <td>Audio/Video Devices</td>
+  </tr>
+  <tr>
+    <td><code>0xE0</code></td>
+    <td>Wireless Controller</td>
+  </tr>
+</table>
+
+Note: This specification attempts to strike a balance between protecting users
+from malicious content by limiting access to sensitive devices while enabling
+support for as many devices as possible. As stated in the introduction the goal
+of this API is to support devices which are not covered by other, more high
+level APIs. The list above includes interface classes for which such high level
+APIs exist and provide greater protection for user privacy and security than
+low level access through this API would.
+
+<div algorithm="find if the interface is claimed">
+    To <dfn>find if the interface is claimed</dfn> with the given |interface|,
+    perform the following steps:
+    1. Let |configuration| be |interface|.{{USBInterface/[[configuration]]}}.
+    1. Let |device| be |configuration|.{{USBConfiguration/[[device]]}}.
+    1. If |configuration| is not the same as the result of <a>finding the current configuration</a>
+        with |device|, return <code>false</code>.
+    1. Let |interfaceIndex| be the result of <a>finding the interface index</a>
+        with |interface|.{{USBInterface/[[interfaceNumber]]}} and |configuration|.
+    1. <a>Assert</a>: |interfaceIndex| is not equal to <code>-1</code>.
+    1. Return |device|.{{USBDevice/[[claimedInterface]]}}[|interfaceIndex|].
+</div>
+
+<div algorithm="find the alternate interface for the current alternate setting">
+    To <dfn>find the alternate interface for the current alternate setting</dfn> with the given |interface|,
+    perform the following steps:
+    1. Let |configuration| be |interface|.{{USBInterface/[[configuration]]}}.
+    1. Let |device| be |configuration|.{{USBConfiguration/[[device]]}}.
+    1. Let |alternateIndex| be 0.
+    1. If the result of <a>finding if the interface is claimed</a> with |interface| is <code>true</code>:
+        1. Let |interfaceIndex| be the result of <a>finding the interface index</a>
+            with |interface|.{{USBInterface/[[interfaceNumber]]}} and |configuration|.
+        1. <a>Assert</a>: |interfaceIndex| is not equal to <code>-1</code>.
+        1. Set |alternateIndex| to be the result of <a>finding the alternate index</a>
+            with |device|.{{USBDevice/[[selectedAlternateSetting]]}}[|interfaceIndex|] and |interface|.
+    1. <a>Assert</a>: |alternateIndex| is not equal to <code>-1</code>.
+    1. Return |interface|.{{USBInterface/alternates}}[|alternateIndex|].
+    
+    Note: There is at least one alternate setting for an interface according to
+    <a>Interface Descriptor</a> [[!USB31]], as there must at least one alternate setting 
+    in the <a>Interface Descriptor</a>.
+</div>
+
+### Constructors ### {#usbinterface-constructors}
+
+<div algorithm="USBInterface constructor">
+    The <dfn constructor for=USBInterface>USBInterface(|configuration|, |interfaceNumber|)</dfn>
+    constructor MUST, when called, perform the following steps:
+    1. Set <a>this</a>.{{USBInterface/[[configuration]]}} to |configuration|.
+    1. Set <a>this</a>.{{USBInterface/[[interfaceNumber]]}} to |interfaceNumber|.
+    1. Let |descriptors| be the result of
+        <a>finding a list of descriptors for a configuration</a> with
+        <code>configurationValue</code> set to
+        |configuration|.{{USBConfiguration/[[configurationValue]]}}.
+    1. <a>For each</a> |descriptor| of |descriptors|:
+        1. If <code>bDescriptorType</code> of |descriptor| is not equal to <code>INTERFACE</code>,
+            continue.
+        1. If <code>bInterfaceNumber</code> of |descriptor| is not equal to |interfaceNumber|,
+            continue.
+        1. If |descriptor| <a>has a protected interface class</a>,
+            set <a>this</a>.{{USBInterface/[[isProtectedClass]]}} to <code>true</code>.
+        1. Let |alternate| be a <a>new</a> {{USBAlternateInterface}} object 
+            using <a>USBAlternateInterface(|deviceInterface|,|alternateSetting|)</a> with
+            |deviceInterface| set to <a>this</a> and
+            |alternateSetting| set to the <code>bAlternateSetting</code> of the |descriptor|.
+        1. <a>Append</a> |alternate| to <a>this</a>.{{USBInterface/[[alternates]]}}.
+</div>
+
+### Attributes ### {#usbinterface-attributes}
+
+<dl dfn-type=attribute dfn-for="USBInterface">
+    : <dfn>interfaceNumber</dfn>
+    ::
+        Each interface provides a collection of {{USBInterface/alternates}} identified
+        by a single <code>bInterfaceNumber</code> field found in their <a>interface
+        descriptors</a>. The {{USBInterface/interfaceNumber}} attribute MUST match this
+        field.
+
+        The {{USBInterface/interfaceNumber}} getter steps are:.
+          1. Return <a>this</a>.{{USBInterface/[[interfaceNumber]]}}.
+    
+    : <dfn>alternate</dfn>
+    ::
+        The {{USBInterface/alternate}} attribute SHALL be set to the
+        {{USBAlternateInterface}} that is currently selected for this interface, which
+        by default SHALL be the one with <code>bAlternateSetting</code> equal to
+        <code>0</code>.
+
+        The {{USBInterface/alternate}} getter steps are:
+            1. Return the result of
+                <a>finding the alternate interface for the current alternate setting</a>
+                with <a>this</a>.
+
+    : <dfn>alternates</dfn>
+    ::
+        The {{alternates}} method provides a collection of {{USBAlternateInterface}}
+        objects identified by a single <code>bInterfaceNumber</code> field found in
+        their <a>interface descriptors</a>.
+
+        The {{alternates}} getter steps are:
+          1. Return <a>this</a>.{{USBInterface/[[alternates]]}}.
+
+    : <dfn>claimed</dfn>
+    ::
+        The {{USBInterface/claimed}} attribute SHALL be set to <code>true</code> when
+        the interface is claimed by the current execution context and SHALL be set to
+        <code>false</code> otherwise.
+
+        The {{USBInterface/claimed}} getter steps are:
+            1. Return the result of <a>finding if the interface is claimed</a> with <a>this</a>.
+</dl>
+
+
+
+## The USBAlternateInterface Interface ## {#usbalternateinterface-interface}
+
+<xmp class="idl">
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBAlternateInterface {
+    constructor(USBInterface deviceInterface, octet alternateSetting);
+    readonly attribute octet alternateSetting;
+    readonly attribute octet interfaceClass;
+    readonly attribute octet interfaceSubclass;
+    readonly attribute octet interfaceProtocol;
+    readonly attribute DOMString? interfaceName;
+    readonly attribute FrozenArray<USBEndpoint> endpoints;
+  };
+</xmp>
+
+Instances of {{USBAlternateInterface}} are created with the <a>internal
+slots</a> described in the following table:
+
+<table class="data" dfn-for="USBAlternateInterface" dfn-type="attribute">
+  <tr>
+    <th><a>Internal Slot</a></th>
+    <th>Initial Value</th>
+    <th>Description (non-normative)</th>
+  </tr>
+  <tr>
+    <td><dfn>\[[interface]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The {{USBInterface}} object <a>this</a> belongs to.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[endpoints]]</dfn></td>
+    <td>An empty <a>sequence</a> of {{USBEndpoint}}</td>
+    <td>
+      All endpoints exposed by this interface.
+    </td>
+  </tr>
+  <tr>
+    <td><dfn>\[[alternateSetting]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The alternate setting for this interface.
+    </td>
+  </tr>
+</table>
+
+<div algorithm="find a list of endpoint descriptors">
+    To <dfn>find a list of endpoint descriptors</dfn> with the given |alternateSetting|
+    , |interfaceNumber|, and |configurationValue|, perform the following steps:
+    1. Let |descriptors| as a result of <a>finding a list of descriptors for a configuration</a>
+        with |configurationValue|.
+    1. Let |endpointDescriptors| as an empty <a>list</a>.
+    1. Let |index| be 0.
+    1. While |index| is less than the <a>size</a> of |descriptors|:
+        1. Let |descriptor| be |descriptors|[|index|].
+        1. If <code>bDescriptorType</code> of |descriptor| is not equal to <code>INTERFACE</code>,
+            increment |index| by 1 and continue.
+        1. if <code>bInterfaceNumber</code> of |descriptor| is not equal |interfaceNumber|,
+            increment |index| by 1 and continue.
+        1. if <code>bAlternateSetting</code> of |descriptor| is not equal |alternateSetting|,
+            increment |index| by 1 and continue.
+        1. If <code>bNumEndpoints</code> is equal to 0, return |endpointDescriptors|.
+        1. Let |numEndpoints| be <code>bNumEndpoints</code> of |descriptor|.
+        1. Let |indexEndpoints| be 0.
+        1. Let |offset| be |index| + 1
+        1. While |indexEndpoints| is less than |numEndpoints|:
+            1. <a>Append</a> |descriptors|[|indexEndpoints| + |offset|] to |endpointDescriptors|.
+            1. Increment |indexEndpoints| by 1.
+        1. Return |endpointDescriptors|.
+</div>
+
+### Constructors ### {#usbalternateinterface-constructors}
+
+<div algorithm="USBAlternateInterface constructor">
+    The <dfn constructor for=USBAlternateInterface>USBAlternateInterface(|deviceInterface|, |alternateSetting|)</dfn>
+    constructor MUST, when called, perform the following steps:
+    1. Set <a>this</a>.{{USBAlternateInterface/[[interface]]}} to |deviceInterface|.
+    1. Set <a>this</a>.{{USBAlternateInterface/[[alternateSetting]]}} to be |alternateSetting|.
+    1. Let |descriptors| be the result of <a>finding a list of endpoint descriptors</a> with
+        <code>interfaceNumber</code> set to |deviceInterface|.{{USBInterface/interfaceNumber}},
+        <code>alternateSetting</code> set to |alternateSetting|,
+        and <code>configurationValue</code> set to
+        |deviceInterface|.{{USBInterface/[[configuration]]}}.{{USBConfiguration/[[configurationValue]]}}.
+    1. <a>For each</a> |descriptor| of |descriptors|:
+        1. If <code>bmAttributes</code> of |descriptor| indicates it is a 
+            Control Transfer Type (i.e. bits <code>0..1</code> is <code>00</code>
+            according to <a>endpoint descriptor</a>), continue.
+        1. Let |endpointAddress| be <code>bEndpointAddress</code> of |descriptor|.
+        1. Let |dir| be {{USBDirection/"out"}} if <code>|endpointAddress| & 0x80</code> is <code>0</code>,
+            and {{USBDirection/"in"}} otherwise.
+        1. Let |endpoint| be a <a>new</a> {{USBEndpoint}} object
+            using <a>USBEndpoint(|alternate|,|endpointNumber|,|direction|)</a>
+            with |alternate| set to <a>this</a>,
+            |endpointNumber| set to <code>|endpointAddress| & 0xF</code>, and
+            |direction| set to |dir|.
+        1. <a>Append</a> |endpoint| to <a>this</a>.{{USBAlternateInterface/[[endpoints]]}}.
+</div>
+
+### Attributes ### {#usbalternateinterface-attributes}
+
+<dl dfn-type=attribute dfn-for="USBAlternateInterface">
+    : <dfn>alternateSetting</dfn>
+    ::
+        Each alternative interface configuration SHALL have a unique
+        {{USBAlternateInterface/alternateSetting}} within a given interface that
+        matches the <code>bAlternateSetting</code> field of the <a>interface
+        descriptor</a> that defines it.
+    
+    : <dfn>interfaceClass</dfn>
+    : <dfn>interfaceSubclass</dfn>
+    : <dfn>interfaceProtocol</dfn>
+    ::
+        The {{USBAlternateInterface/interfaceClass}},
+        {{USBAlternateInterface/interfaceSubclass}} and
+        {{USBAlternateInterface/interfaceProtocol}} attributes declare the
+        communication interface supported by the interface. They MUST correspond
+        respectively to the values of the <code>bInterfaceClass</code>,
+        <code>bInterfaceSubClass</code> and <code>bInterfaceProtocol</code> fields of
+        the <a>interface descriptor</a>.
+
+    : <dfn>interfaceName</dfn>
+    ::
+        The {{USBAlternateInterface/interfaceName}} attribute SHOULD contain the value
+        of the <a>string descriptor</a> indexed by the <code>iInterface</code> field of
+        the <a>interface descriptor</a>, if defined.
+
+    : <dfn>endpoints</dfn>
+    ::
+        The {{USBAlternateInterface/endpoints}} attribute SHALL contain a list of
+        endpoints exposed by this interface. These endpoints SHALL by populated from
+        the <a>endpoint descriptors</a> contained within this
+        <a>interface descriptor</a> and the number of elements in this sequence SHALL
+        match the value of the <code>bNumEndpoints</code> field of the
+        <a>interface descriptor</a>.
+
+        The {{USBAlternateInterface/endpoints}} getter steps are:
+        1. Return <a>this</a>.{{USBAlternateInterface/[[endpoints]]}}.
+
+</dl>
+
+## The USBEndpoint Interface ## {#usbendpoint-interface}
+
+<xmp class="idl">
+  enum USBDirection {
+    "in",
+    "out"
+  };
+
+  enum USBEndpointType {
+    "bulk",
+    "interrupt",
+    "isochronous"
+  };
+
+  [
+    Exposed=(DedicatedWorker,SharedWorker,Window),
+    SecureContext
+  ]
+  interface USBEndpoint {
+    constructor(USBAlternateInterface alternate, octet endpointNumber, USBDirection direction);
+    readonly attribute octet endpointNumber;
+    readonly attribute USBDirection direction;
+    readonly attribute USBEndpointType type;
+    readonly attribute unsigned long packetSize;
+  };
+</xmp>
+
+Instances of {{USBEndpoint}} are created with the <a>internal
+slots</a> described in the following table:
+
+<table class="data" dfn-for="USBEndpoint" dfn-type="attribute">
+  <tr>
+    <th><a>Internal Slot</a></th>
+    <th>Initial Value</th>
+    <th>Description (non-normative)</th>
+  </tr>
+  <tr>
+    <td><dfn>\[[alternateInterface]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The {{USBAlternateInterface}} object <a>this</a> belongs to.
+    </td>
+  </tr>  
+  <tr>
+    <td><dfn>\[[endpointAddress]]</dfn></td>
+    <td>&lt;always set in prose></td>
+    <td>
+      The endpoint address of this endpoint.
+    </td>
+  </tr>
+</table>
+
+<div algorithm="find the endpoint descriptor">
+    To <dfn>find the endpoint descriptor</dfn> with the given |endpoint| object,
+    perform the following steps:
+    1. Let |alternateInterface| be |endpoint|.{{USBEndpoint/[[alternateInterface]]}}.
+    1. Let |interface| be |alternateInterface|.{{USBAlternateInterface/[[interface]]}}.
+    1. Let |configuration| be |interface|.{{USBInterface/[[configuration]]}}.
+    1. Let |endpointDescriptors| be the result of <a>finding a list of endpoint descriptors</a> with
+        <code>alternateSetting</code> set to |alternateInterface|.{{USBAlternateInterface/alternateSetting}},
+        <code>interfaceNumber</code> set to |interface|.{{USBInterface/interfaceNumber}}, and
+        <code>configurationValue</code> set to |configuration|.{{USBConfiguration/configurationValue}}.
+    1. <a>For each</a> |endpointDescriptor| of |endpointDescriptors|:
+        1. If |endpoint|.{{USBEndpoint/[[endpointAddress]]}} is equal to
+            <code>bEndpointAddress</code> of |endpointDescriptor|, return |endpointDescriptor|.
+</div>
+
+### Constructors ### {#usbendpoint-constructors}
+
+<div algorithm="endpointNumber constructor">
+    The <dfn constructor for=endpointNumber>endpointNumber(|alternate|, |endpointNumber|, |direction|)</dfn>
+    constructor MUST, when called, perform the following steps:
+    1. Set <a>this</a>.{{USBEndpoint/[[alternateInterface]]}} to |alternate|.
+    1. Set |endpointAddress| to <code>|endpointNumber| | 0x80</code>
+        If |direction| is {{USBDirection/"in"}}, and |endpointNumber| otherwise.
+    1. Set <a>this</a>.{{USBEndpoint/[[endpointAddress]]}} to |endpointAddress|.
+</div>
+
+### Attributes ### {#usbendpoint-attributes}
+
+<dl dfn-type=attribute dfn-for="USBEndpoint">
+    : <dfn>endpointNumber</dfn>
+    : <dfn>direction</dfn>
+    ::
+        Each endpoint within a particular device configuration SHALL have a unique
+        combination of {{USBEndpoint/endpointNumber}} and {{USBEndpoint/direction}}.
+        The {{USBEndpoint/endpointNumber}} MUST equal the 4 least significant bits of
+        the <code>bEndpointAddress</code> field of the <a>endpoint descriptor</a>
+        defining the endpoint.
+
+        The {{USBEndpoint/direction}} attribute declares the transfer direction
+        supported by this endpoint and is equal to {{"in"}} if the most
+        significant bit of the <code>bEndpointAddress</code> is set and
+        {{"out"}} otherwise. An endpoint may either carry data <code>IN</code>
+        from the device to host or <code>OUT</code> from host to device.
+
+    : <dfn>type</dfn>
+    ::
+        The {{USBEndpoint/type}} attribute declares the type of data transfer supported
+        by this endpoint.
+
+        The {{USBEndpoint/type}} getter steps are:
+        1. Let |endpointDescriptor| be the result of <a>finding the endpoint descriptor</a>
+            with <a>this</a>.
+        1. Let |attr| be <code>bmAttributes</code> of |endpointDescriptor|.
+        1. Let |typeBits| be <code>|attr| & 0x3</code>.
+        1. If |typeBits| is equal to <code>b01</code>, return {{USBEndpointType/"isochronous"}}.
+        1. If |typeBits| is equal to <code>b10</code>, return {{USBEndpointType/"bulk"}}.
+        1. If |typeBits| is equal to <code>b11</code>, return {{USBEndpointType/"interrupt"}}.
+
+        Note: There shouldn't be any endpoint object belongs to Control Transfer Type
+        according to the steps in <a>USBAlternateInterface(deviceInterface,alternateSetting)</a>.
+
+    : <dfn>packetSize</dfn>
+    ::
+        The {{USBEndpoint/packetSize}} attribute declares the packet size employed by
+        this endpoint and MUST be equal to the value of the <code>wMaxPacketSize</code>
+        of the <a>endpoint descriptor</a> defining it. In a High-Speed, High-Bandwidth
+        endpoint this value will include the multiplication factor provided by issuing
+        multiple transactions per microframe. In a SuperSpeed device this value will
+        include the multiplication factor provided by the <code>bMaxBurst</code> field
+        of the SuperSpeed Endpoint Companion descriptor.
+
+        The {{USBEndpoint/packetSize}} getter steps are:
+        1. Let |endpointDescriptor| be the result of <a>finding the endpoint descriptor</a>
+            with <a>this</a>.
+        1. Return <code>wMaxPacketSize</code> of |endpointDescriptor|.
+</dl>
+
+# The USB Blocklist # {#blocklist}
+
+<xmp class="idl">
+  // USBBlocklistEntry is never exposed.
+  dictionary USBBlocklistEntry {
+    required unsigned short idVendor;
+    required unsigned short idProduct;
+    required unsigned short bcdDevice;
+  };
+</xmp>
+
+This specification relies on a <a href="https://raw.githubusercontent.com/WICG/webusb/main/blocklist.txt">blocklist.txt</a>
+file in this repository to restrict the set of devices a website can access.
+
+The result of <dfn>parsing the blocklist</dfn> at a {{URL}} |url| is a [=list=]
+of {{USBBlocklistEntry}} objects produced by the following algorithm:
+
+  1. Fetch |url| and let |contents| be its body, decoded as UTF-8.
+  1. Let |lines| be the result of [=strictly splitting=] |contents| starting
+     from the beginning of |contents| on code point <code>'\n'</code>.
+  1. Let |blocklist| be an empty [=list=].
+  1. [=list/For each=] |line| of |lines|:
+      1. Set |line| to the result of [=collecting a sequence of code points=]
+         not equal to <code>'#'</code> from |line| starting from the beginning
+         of |line|.
+      1. Set |line| to the result of [=stripping leading and trailing ASCII
+         whitespace=] from |line|.
+      1. Let |components| be the result of [=strictly splitting=] |line|
+         starting from the beginning of |line| on code point <code>':'</code>.
+      1. If the [=list/size=] of |components| is not 2 or 3,
+         [=iteration/continue=].
+      1. Let |idVendor| be the result of interpreting |components|[0] as a
+         hexadecimal number.
+      1. Let |idProduct| be the result of interpreting |components|[1] as a
+         hexadecimal number.
+      1. Let |bcdDevice| be <code>0xFFFF</code>.
+      1. If the [=list/size=] of |components| is 3, set |bcdDevice| to the
+         result of interpreting |components|[2] as a hexadecimal number.
+      1. [=list/Append=] a new {{USBBlocklistEntry}} with |idVendor|,
+         |idProduct|, and |bcdDevice| to |blocklist|.
+  1. Return |blocklist|.
+
+The <dfn>USB blocklist</dfn> is the result of [=parsing the blocklist=] at
+<a href="https://raw.githubusercontent.com/WICG/webusb/main/blocklist.txt">https://raw.githubusercontent.com/WICG/webusb/main/blocklist.txt</a>.
+The UA should re-fetch the blocklist periodically, but it’s unspecified how
+often.
+
+A {{USBDevice}} |device| is <dfn>blocklisted</dfn> for a {{Document}} |document|
+if the following steps return "blocked":
+
+  1. If |document| is not <code>null</code> and |document| is [=allowed to use=]
+     the [=policy-controlled feature=] named <code>"usb-unrestricted"</code>,
+     return "not blocked".
+  1. [=list/For each=] |entry| of the [=USB blocklist=]:
+      1. If |device|.{{USBDevice/vendorId}} is not equal to
+         |entry|.{{USBBlocklistEntry/idVendor}}, [=iteration/continue=].
+      1. If |device|.{{USBDevice/productId}} is not equal to
+         |entry|.{{USBBlocklistEntry/idProduct}}, [=iteration/continue=].
+      1. Let |bcdDevice| be |device|.{{USBDevice/deviceVersionMajor}} << 8 +
+         |device|.{{USBDevice/deviceVersionMinor}} << 4 +
+         |device|.{{USBDevice/deviceVersionSubminor}}.
+      1. If |bcdDevice| is less than or equal to
+         |entry|.{{USBBlocklistEntry/bcdDevice}}, return "blocked".
+  1. Return "not blocked".
+
+# Integrations # {#integrations}
+
+<h3 id="permissions-policy" oldids="feature-policy">Permissions Policy</h3>
+
+This specification defines a <a>policy-controlled feature</a>, identified by the
+token <code>"usb"</code>, that controls whether the {{Navigator/usb}} attribute
+is exposed on the {{Navigator}} object.
+
+The <a>default allowlist</a> for this feature is <code>["self"]</code>.
+
+This specification defines a second <a>policy-controlled feature</a>, identified
+by the token <code>"usb-unrestricted"</code>, that controls whether blocklisted
+USB devices and device interfaces with protected classes can be accessed. This
+feature MUST only be enabled for <a href="https://github.com/WICG/isolated-web-apps/blob/main/README.md">Isolated Web Apps</a>
+that declare the feature in the Web Application Manifest [[APPMANIFEST]].
+
+The <a>default allowlist</a> for this feature is <code>["self"]</code>.
+Typically this would imply that the feature is allowed in {{Document}}s in
+[=top-level traversables=] by default. However, due to the requirement that this
+feature is only enabled for Isolated Web Apps with the feature declared in the
+manifest, the effective default allowlist is <code>["none"]</code>.
+
+## Permission API ## {#permission-api}
+
+The [[permissions]] API provides a uniform way for websites to request
+permissions from users and query which permissions they have.
+
+The <dfn enum-value for="PermissionName">"usb"</dfn> <a>powerful feature</a> is
+defined as follows:
+
+<dl>
+  <dt><a>permission descriptor type</a></dt>
+  <dd>
+    <xmp class="idl">
+      dictionary USBPermissionDescriptor : PermissionDescriptor {
+        sequence<USBDeviceFilter> filters;
+        sequence<USBDeviceFilter> exclusionFilters;
+      };
+    </xmp>
+  </dd>
+  <dt><a>extra permission data type</a></dt>
+  <dd>
+    {{USBPermissionStorage}}, defined as:
+    <xmp class="idl">
+      dictionary AllowedUSBDevice {
+        required octet vendorId;
+        required octet productId;
+        DOMString serialNumber;
+      };
+
+      dictionary USBPermissionStorage {
+        sequence<AllowedUSBDevice> allowedDevices = [];
+      };
+    </xmp>
+
+    {{AllowedUSBDevice}} instances have an internal slot
+    <dfn attribute for="AllowedUSBDevice">\[[devices]]</dfn> that holds an
+    array of <a>USB devices</a>.
+  </dd>
+  <dt><a>permission result type</a></dt>
+  <dd>
+    <xmp class="idl">
+      [Exposed=(DedicatedWorker,SharedWorker,Window)]
+      interface USBPermissionResult : PermissionStatus {
+        attribute FrozenArray<USBDevice> devices;
+      };
+    </xmp>
+  </dd>
+  <dt><a>permission query algorithm</a></dt>
+  <dd>
+    To <strong><em>query the "usb" permission</em></strong> with a
+    {{USBPermissionDescriptor}} |desc|, a {{USBPermissionStorage}} |storage|,
+    and a {{USBPermissionResult}} |status|, the UA must:
+
+      1. If <code>|desc|.{{USBPermissionDescriptor/filters}}</code> is set then,
+         for each |filter| in
+         <code>|desc|.{{USBPermissionDescriptor/filters}}</code> if |filter|
+         <a>is not a valid filter</a> then raise a {{TypeError}} and abort these
+         steps.
+      2. If <code>|desc|.{{USBPermissionDescriptor/exclusionFilters}}</code> is
+         set then, for each |exclusionFilter| in
+         <code>|desc|.{{USBPermissionDescriptor/exclusionFilters}}</code> if
+         |exclusionFilter| <a>is not a valid filter</a> then raise a {{TypeError}}
+         and abort these steps.
+      3. Set <code>|status|.{{PermissionStatus/state}}</code> to
+         {{"prompt"}}.
+      4. Let |matchingDevices| be a new {{Array}}.
+      5. For each |allowedDevice| in
+         <code>|storage|.{{USBPermissionStorage/allowedDevices}}</code> and
+         for each |device| in <code>|allowedDevice|@{{[[devices]]}}</code>, run
+         the following substeps:
+
+           1. If <code>|desc|.{{USBPermissionDescriptor/filters}}</code> is set
+              and |device| does not <a>match a device filter</a> in
+              <code>|desc|.{{USBPermissionDescriptor/filters}}</code>, continue
+              to the next |device|.
+           2. If <code>|desc|.{{USBPermissionDescriptor/exclusionFilters}}</code>
+              is set and |device| <a>matches a device filter</a> in
+              <code>|desc|.{{USBPermissionDescriptor/exclusionFilters}}</code>,
+              continue to the next |device|.
+           3. Get the {{USBDevice}} representing |device| and add it to
+              |matchingDevices|.
+
+      6. Set <code>|status|.{{USBPermissionResult/devices}}</code> to a new
+         {{FrozenArray}} whose contents are |matchingDevices|.
+  </dd>
+  <dt><a>permission request algorithm</a></dt>
+  <dd><a>Request the "usb" permission</a>.</dd>
+</dl>
+
+# Terminology # {#terminology}
+
+This specification uses several terms taken from [[!USB31]]. While
+reference is made to version 3.1 of the Universal Serial Bus many of
+these concepts exist in previous versions as well. Significant
+differences between USB versions that have bearing on this specification
+will be called out explicitly.
+
+<dfn>Descriptors</dfn> are binary data structures that can be read from
+a device and describe its properties and function:
+
+  * The <dfn>device descriptor</dfn> contains information applicable to
+    the entire devices and is described in section 9.6.1 of [[!USB31]].
+  * A <dfn>configuration descriptor</dfn> describes a particular set of
+    device interfaces and endpoints that can be selected by the host.
+    Its fields are described in section 9.6.3 of [[!USB31]].
+  * An <dfn>interface descriptor</dfn> describes the interface of a particular
+    functional component of a device including its protocol and communication
+    endpoints. Its fields are described in section 9.6.5 of [[!USB31]].
+  * An <strong><em>interface association descriptor</em></strong>
+    creates an association between multiple interfaces that are part of a single
+    functional unit of a device. Its fields are described in section
+    9.6.4 of [[!USB31]].
+  * An <dfn>endpoint descriptor</dfn> describes a channel through which
+    data is either sent to or received from the device. Its fields are
+    described in section 9.6.6 of [[!USB31]].
+  * A <dfn>string descriptor</dfn> contains a single UTF16-LE string and is
+    referenced by index by other descriptors. Its fields are described in
+    section 9.6.9 of [[!USB31]].
+
+The <dfn>Binary Object Store</dfn>
+(<abbr title="Binary Object Store">BOS</abbr>) is an additional set of
+descriptors that are more free-form than the standard device
+descriptors. Of note is the <dfn>Platform Descriptor</dfn> type which
+allows third parties (such as this specification) to declare their own
+types of descriptors. Each of these is identified by a UUID. The Binary
+Object Store is described in section 9.6.2 of [[!USB31]].
+
+A <dfn>USB device</dfn> has a single <a>device descriptor</a> which links to
+one or more <a>configuration descriptors</a>. It's <dfn>vendor ID</dfn> is
+assigned to the device manufacturer by the USB-IF and is stored in the
+<code>idVendor</code> field of the <a>device descriptor</a>. It's <dfn>product
+ID</dfn> is assigned by the manufacturer and is stored in the
+<code>idProduct</code> field of the <a>device descriptor</a>. It's <dfn>serial
+number</dfn> is an optional property that is defined if the
+<code>iSerialNumber</code> field of the <a>device descriptor</a> is not equal
+to <code>0</code> and is the <a>string descriptor</a> referred to by that index.
+
+The <dfn>Get Configuration</dfn> is a request to the current device configuration
+value, described in in section 9.4.2 of [[!USB31]].
+
+The <dfn>Set Descriptor</dfn> is a request to get the descriptor with specified
+Descriptor Type and Descriptor Index, described in in section 9.4.8 of [[!USB31]].
+
+The <dfn>Get Descriptor</dfn> is a request to get the descriptor with specified
+Descriptor Type and Descriptor Index, described in in section 9.4.3 of [[!USB31]].
+
+Note: As <a>descriptors</a> of the device stay the same for the most of the time (with
+occasional occurrences of <a>Set Descriptor</a> which might modify the <a>descriptors</a>).
+In order to save the redundant <a>Get Descriptor</a> traffic to the device, implementations
+could have a read-through & write-through cache layer to store the <a>descriptors</a>
+of the device.
+
+A <dfn>control transfer</dfn> is a special class of USB traffic most commonly
+used for configuring a device. It consists of three stages:
+<a lt="setup stage">setup</a>, <a lt="data stage">data</a> and
+<a lt="status stage">status</a>. In the <dfn>setup stage</dfn> a
+<dfn>setup packet</dfn> is transmitted to the device containing request
+parameters including the transfer direction and size of the data to follow. In
+the <dfn>data stage</dfn> that data is either sent to or received from the
+device. In the <dfn>status stage</dfn> successful handling of the request is
+acknowledged or a failure is signaled.
+
+# Appendix: A Brief Introduction to USB # {#appendix-intro}
+
+<em>This section is non-normative</em>.
+
+USB is a network but it's very different from traditional TCP/IP networks. It is
+really more like an RPC system. All traffic is directed by the host, that is,
+your computer. Though some devices like smartphones can act as both a USB host
+and USB client they can only take on one role at a time.
+
+## Descriptors ## {#appendix-descriptors}
+
+USB devices identify themselves to the host by providing a set of binary
+structures known as <a>descriptors</a>. The first one read by the host is the
+<a>device descriptor</a> which contains basic information such as the vendor and
+product IDs assigned by the USB-IF and the manufacturer. The host may then read
+the device's <a>configuration descriptor</a> which is a description of the
+device's capabilities including the interfaces and endpoints it exposes. A class
+can be declared at the device level or for individual interfaces. A device with
+multiple interfaces providing different functions is known as a
+<strong><em>composite device</em></strong>.
+
+## Transfers ## {#appendix-transfers}
+
+Whether data is traveling from host to device or the other way around the
+transfer is always initiated by the host.
+<dfn>OUT transfers</dfn> carry data from host to
+device and may wait until the device acknowledges the data has been received.
+<dfn>IN transfers</dfn> carry data from device to
+host and may have to wait until the device has some data to send. Transfers are
+executed against one of a device's endpoints and there are different kinds
+depending on what type of traffic is being sent.
+
+  * <dfn>Bulk transfers</dfn> are good for sending lots of data with whatever
+    bandwidth is available. This is what is used to read and write data to USB
+    mass storage devices.
+  * <dfn>Interrupt transfers</dfn> offer guaranteed latency (by reserving
+    bandwidth so that they can't be blocked by a large <a>bulk transfers</a>)
+    but with limited packet sizes. These are used for signaling and for small
+    packets like mouse movements and button presses.
+  * <dfn>Isochronous transfers</dfn> also reserve
+    bandwidth but they don't guarantee delivery. They're used for streaming data
+    like audio and video.
+  * Every device also has a special
+    <dfn lt="default endpoint|default control pipe">default endpoint</dfn>. While regular
+    endpoints only carry data in one direction or the other
+    <a>control transfers</a> have a small header called the
+    <a>SETUP packet</a> that is always sent to the device and contains request
+    parameters in addition to a larger data payload that can be either IN or OUT.
+
+<pre class="biblio">
+{
+  "RFC4122": {
+    "href": "https://tools.ietf.org/html/rfc4122",
+    "title": "A Universally Unique IDentifier (UUID) URN Namespace",
+    "publisher": "Internet Engineering Task Force",
+    "date": "July 2005"
+  },
+  "USB31": {
+    "href": "http://www.usb.org/developers/docs/",
+    "title": "Universal Serial Bus 3.1 Specification",
+    "publisher": "USB Implementors Forum",
+    "date": "26 July 2013"
+  }
+}
+</pre>
+
+<pre class="anchors">
+spec: ECMAScript; urlPrefix: https://tc39.github.io/ecma262/#
+    type: interface
+        text: Array; url: sec-array-objects
+        text: Promise; url:sec-promise-objects
+        text: TypeError; url: sec-native-error-types-used-in-this-standard-typeerror
+    type: dfn
+        text: internal slot; url: sec-object-internal-methods-and-internal-slots        
+</pre>
+
+<pre class="link-defaults">
+spec: html
+    type: dfn
+        text: transient activation
+        text: in parallel
+        text: incumbent settings object
+spec: webidl
+    type: dfn
+        text: resolve
+spec:infra; type:dfn; text:list
+spec:infra; type:dfn; for:list; text:for each
+spec:infra; type:dfn; for:list; text:append
+spec:infra; type:dfn; for:list; text:empty
+spec:infra; type:dfn; for:list; text:size
+spec:url; type:interface; text:URL
+</pre>
